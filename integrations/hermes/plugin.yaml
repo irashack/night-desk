@@ -1,0 +1,21 @@
+name: nightdesk
+version: 1.1.0
+description: A thin adapter over the Night Desk agent protocol for paper configuration, candidates, drafts, review, reader notes, editions and feedback.
+provides_tools:
+  - nightdesk_paper
+  - nightdesk_publish_edition
+  - nightdesk_read_feedback
+  - nightdesk_get_candidates
+  - nightdesk_get_draft
+  - nightdesk_list_drafts
+  - nightdesk_get_notes
+  - nightdesk_list_editions
+  - nightdesk_get_edition
+  - nightdesk_get_item
+  - nightdesk_edit_paper
+  - nightdesk_paper_revisions
+  - nightdesk_restore_paper
+  - nightdesk_submit_draft
+  - nightdesk_review_draft
+  - nightdesk_publish_draft
+  - nightdesk_set_notes

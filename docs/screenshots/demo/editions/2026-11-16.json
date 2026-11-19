@@ -1,0 +1,102 @@
+{
+  "schema": 2,
+  "lead": "northgate-deck",
+  "motto": {
+    "kind": "quotation",
+    "text": "A journey of a thousand miles begins with a single step.",
+    "source": "Proverb"
+  },
+  "sections": [
+    {
+      "key": "world",
+      "items": [
+        {
+          "id": "quota-talks-open",
+          "kind": "news",
+          "title": "Fishing quota talks resume with a shared ledger on the table",
+          "summary": "Twelve coastal states are meeting for what organisers hope is the final round.",
+          "source": "Meridian Wire",
+          "byline": "Anneliese Marrow",
+          "url": "https://meridian-wire.example/2026/11/16/quota-talks-resume",
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "freight-rates",
+          "kind": "news",
+          "title": "Freight rates climb as holiday shipping peaks",
+          "summary": "Shippers are paying more for space on routes into Port Calder, where volumes are running well ahead of last year.",
+          "source": "Bellmark Business Daily",
+          "byline": "Ines Halvard",
+          "url": "https://bellmark-business.example/2026/11/16/freight-rates-climb",
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "key": "science",
+      "items": [
+        {
+          "id": "frost-early",
+          "kind": "brief",
+          "title": "First hard frost arrives two weeks early",
+          "summary": "The weather station on the ridge recorded minus four degrees before dawn on Sunday.",
+          "source": "Lattice Science",
+          "url": "https://lattice-science.example/2026/11/16/early-hard-frost",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "local",
+      "items": [
+        {
+          "id": "northgate-deck",
+          "kind": "news",
+          "title": "Northgate Bridge repairs enter their final phase as crews pour the new deck",
+          "summary": "The pour is the last major step before inspection; the city still targets a December reopening.",
+          "source": "The Riverside Courier",
+          "byline": "Maren Ashby",
+          "sources": [
+            {
+              "outlet": "Harborline Radio",
+              "url": "https://harborline-radio.example/2026/11/16/bridge-deck-pour"
+            }
+          ],
+          "url": "https://riverside-courier.example/2026/11/16/northgate-deck-pour",
+          "minutes": 4
+        },
+        {
+          "id": "library-hours-proposal",
+          "kind": "news",
+          "title": "Library proposes Sunday hours at the Eastbank branch",
+          "summary": "The board will vote on Wednesday on a plan to shift two weekday evening hours to Sunday afternoons.",
+          "source": "Eastbank Gazette",
+          "byline": "Colm Fairweather",
+          "url": "https://eastbank-gazette.example/2026/11/16/library-sunday-proposal",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "opinion",
+      "items": [
+        {
+          "id": "council-meetings-evening",
+          "kind": "opinion",
+          "title": "Hold council meetings after work, not at 3 p.m.",
+          "summary": "Afternoon sessions shut out the residents most affected by the decisions being made.",
+          "source": "Quarterlight Magazine",
+          "byline": "Odile Fenwick",
+          "url": "https://quarterlight.example/2026/11/16/council-evening-meetings",
+          "minutes": 3,
+          "stance": "Evening meetings would open city hall to working residents."
+        }
+      ]
+    }
+  ]
+}

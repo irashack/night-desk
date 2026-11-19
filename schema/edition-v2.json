@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "boxes": {
+      "additionalProperties": false,
+      "properties": {
+        "markets": {
+          "additionalProperties": false,
+          "properties": {
+            "as_of": {
+              "format": "date-time",
+              "minLength": 1,
+              "type": "string"
+            },
+            "quotes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "change": {
+                    "maxLength": 24,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "up",
+                      "down",
+                      "flat"
+                    ],
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "label": {
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "symbol": {
+                    "maxLength": 16,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 24,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "symbol",
+                  "label",
+                  "value",
+                  "change",
+                  "direction"
+                ],
+                "type": "object"
+              },
+              "maxItems": 12,
+              "type": "array"
+            },
+            "source": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "as_of",
+            "quotes"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "lead": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "motto": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "scripture",
+            "quotation"
+          ],
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 400,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": 2,
+      "type": "integer"
+    },
+    "sections": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "about": {
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                  "type": "string"
+                },
+                "byline": {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "id": {
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                  "type": "string"
+                },
+                "image_url": {
+                  "format": "uri",
+                  "minLength": 1,
+                  "pattern": "^[hH][tT][tT][pP][sS]://[^/@\\s?#]+([/?#][^\\s]*)?$",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "news",
+                    "seasonal",
+                    "evergreen",
+                    "brief",
+                    "opinion"
+                  ],
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minutes": {
+                  "maximum": 240,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "source": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sources": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "byline": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "outlet": {
+                        "maxLength": 80,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "url": {
+                        "format": "uri",
+                        "minLength": 1,
+                        "pattern": "^[hH][tT][tT][pP][sS]://[^/@\\s?#]+([/?#][^\\s]*)?$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "outlet",
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 12,
+                  "type": "array"
+                },
+                "stance": {
+                  "maxLength": 140,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "summary": {
+                  "maxLength": 600,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "title": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "minLength": 1,
+                  "pattern": "^[hH][tT][tT][pP][sS]://[^/@\\s?#]+([/?#][^\\s]*)?$",
+                  "type": "string"
+                },
+                "why": {
+                  "maxLength": 300,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "title",
+                "summary",
+                "source",
+                "url"
+              ],
+              "type": "object"
+            },
+            "maxItems": 6,
+            "type": "array"
+          },
+          "key": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "items"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "lead",
+    "sections"
+  ],
+  "title": "Night Desk edition v2",
+  "type": "object"
+}

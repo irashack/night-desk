@@ -1,0 +1,107 @@
+{
+  "schema": 2,
+  "lead": "northgate-lanes",
+  "motto": {
+    "kind": "quotation",
+    "text": "Many hands make light work.",
+    "source": "Proverb"
+  },
+  "sections": [
+    {
+      "key": "world",
+      "items": [
+        {
+          "id": "plateau-floods",
+          "kind": "news",
+          "title": "Relief crews close two highways as plateau rivers rise",
+          "summary": "Forecasters expect the rains to ease by the weekend, but warn that reservoirs are near capacity.",
+          "source": "Meridian Wire",
+          "byline": "Anneliese Marrow",
+          "url": "https://meridian-wire.example/2026/11/17/plateau-highways-closed",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "rate-outlook",
+          "kind": "news",
+          "title": "Lenders expect mortgage rates to hold steady through the winter",
+          "summary": "A survey of regional banks found most see little change before spring, after a year of slow declines.",
+          "source": "Bellmark Business Daily",
+          "byline": "Ines Halvard",
+          "url": "https://bellmark-business.example/2026/11/17/mortgage-rate-outlook",
+          "minutes": 4
+        },
+        {
+          "id": "orchard-harvest",
+          "kind": "news",
+          "title": "Valley orchards report their best apple harvest in a decade",
+          "summary": "A mild spring and a dry September pushed yields up by a fifth; cider makers expect lower prices.",
+          "source": "Bellmark Business Daily",
+          "url": "https://bellmark-business.example/2026/11/17/orchard-harvest-best-decade",
+          "minutes": 3,
+          "image_url": "https://images.evening-ledger.example/demo/orchard.jpg"
+        }
+      ]
+    },
+    {
+      "key": "science",
+      "items": [
+        {
+          "id": "river-sensors",
+          "kind": "news",
+          "title": "Students install water-quality sensors along the river",
+          "summary": "The high-school project will publish temperature and oxygen readings every fifteen minutes.",
+          "source": "Lattice Science",
+          "byline": "Jonah Brightwater",
+          "url": "https://lattice-science.example/2026/11/17/student-river-sensors",
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "key": "local",
+      "items": [
+        {
+          "id": "northgate-lanes",
+          "kind": "news",
+          "title": "Northgate Bridge lane closures to end Friday, the city says",
+          "summary": "Crews are finishing the lamp restoration; the last detour signs come down at the end of the week.",
+          "source": "The Riverside Courier",
+          "byline": "Maren Ashby",
+          "url": "https://riverside-courier.example/2026/11/17/northgate-closures-end",
+          "minutes": 3
+        },
+        {
+          "id": "snow-plan",
+          "kind": "seasonal",
+          "title": "City publishes its snow-plowing priority map",
+          "summary": "Hospital routes and bus lines are cleared first, then hills, then residential streets.",
+          "source": "The Riverside Courier",
+          "url": "https://riverside-courier.example/2026/11/17/snow-plow-map",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "opinion",
+      "items": [
+        {
+          "id": "sensor-data-open",
+          "kind": "opinion",
+          "title": "Publish every reading from the river sensors",
+          "summary": "Open data from the students' project would do more for trust than any glossy report.",
+          "source": "The Lantern Post",
+          "byline": "Halden Moss",
+          "url": "https://lantern-post.example/2026/11/17/publish-river-readings",
+          "minutes": 3,
+          "about": "river-sensors",
+          "stance": "The river data should be public in real time."
+        }
+      ]
+    }
+  ]
+}

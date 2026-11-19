@@ -1,0 +1,25 @@
+# Set NIGHTDESK_IMAGE to a trusted image pinned by digest and NIGHTDESK_DIR to
+# the absolute path initialized with `nightdesk init`. Complete OIDC first.
+# Set NIGHTDESK_UID/GID to the user that owns the bind mount (default image: 65532).
+services:
+  nightdesk:
+    image: ${NIGHTDESK_IMAGE:?Set NIGHTDESK_IMAGE to a released image digest}
+    user: "${NIGHTDESK_UID:-65532}:${NIGHTDESK_GID:-65532}"
+    command: ["serve", "--config", "/data/config.yaml"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - type: bind
+        source: ${NIGHTDESK_DIR:?Set NIGHTDESK_DIR to the initialized directory}
+        target: /data
+        bind:
+          create_host_path: false
+    stop_grace_period: 15s
+
+# Gathering: run `nightdesk gather --server <url> --key-file <file>` in a
+# separate container with a `nightdesk key issue <paper> --worker` key (see
+# docs/install.md). Mount only its key, never this volume.

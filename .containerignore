@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+.aws
+.cache
+.env
+.env.*
+docs/reference
+testdata/*.dump
+testdata/*.sql
+testdata/*.db
+testdata/*.sqlite
+testdata/*.sqlite3
+docs/screenshots/*.png

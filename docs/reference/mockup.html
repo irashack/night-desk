@@ -1,0 +1,544 @@
+<title>Night Desk Paper Mockups</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Libre+Franklin:wght@400;600;800&family=Archivo:wdth,wght@62..125,400..900&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400&family=Alfa+Slab+One&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a phone-width reader on a quiet desk; the toolbar picks the look, the reading mode and the paper's colors. */
+:root {
+  --bg: #eef0ee;
+  --fg: #1c201e;
+  --muted: #5d6762;
+  --line: #cdd3cf;
+  --chip: #ffffff;
+  --chip-on: #1c201e;
+  --chip-on-fg: #ffffff;
+  --ui: "Libre Franklin", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #151816; --fg: #e7ebe8; --muted: #98a39d; --line: #303632; --chip: #1f2320; --chip-on: #e7ebe8; --chip-on-fg: #151816; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #151816; --fg: #e7ebe8; --muted: #98a39d; --line: #303632; --chip: #1f2320; --chip-on: #e7ebe8; --chip-on-fg: #151816; color-scheme: dark; }
+
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 28px;
+}
+.shell { max-width: 980px; margin: 0 auto; display: grid; gap: 14px; justify-items: center; }
+.note { font-size: 12.5px; color: var(--muted); text-align: center; max-width: 52ch; line-height: 1.45; margin: 0; text-wrap: balance; }
+.note b { color: var(--fg); font-weight: 600; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center; align-items: center; }
+.ctl { display: flex; align-items: center; gap: 8px; }
+.ctl > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
+.seg { display: inline-flex; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button { font: 600 12.5px/1 var(--ui); border: 0; background: transparent; color: var(--fg); padding: 7px 11px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-fg); }
+.seg button:focus-visible, .turnbar button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* ---------- Reader tokens per look ---------- */
+.reader {
+  width: 100%; max-width: 440px;
+  --p-bg: #ecebe6; --p-ink: #191918; --p-muted: #5e5c56; --p-rule: #191918; --p-soft: #e2e0d9; --p-accent: #8a1f14;
+  --f-mast: "UnifrakturCook", "Old English Text MT", Georgia, serif;
+  --f-head: "Old Standard TT", Georgia, "Times New Roman", serif;
+  --f-body: "Old Standard TT", Georgia, serif;
+  --f-label: "Libre Franklin", system-ui, sans-serif;
+  --img-filter: grayscale(1) contrast(1.15);
+}
+.reader[data-look="magazine"] {
+  --p-bg: #fbfbf9; --p-ink: #101114; --p-muted: #60636b; --p-rule: #dcdde1; --p-soft: #f0f1f4; --p-accent: #2140ff;
+  --f-mast: "Archivo", system-ui, sans-serif;
+  --f-head: "Archivo", system-ui, sans-serif;
+  --f-body: "Newsreader", Georgia, serif;
+  --f-label: "Archivo", system-ui, sans-serif;
+  --img-filter: none;
+}
+.reader[data-look="bayou"] {
+  --p-bg: #f0e9da; --p-ink: #1f2a23; --p-muted: #5a6458; --p-rule: #2f5a52; --p-soft: #e5dcc8; --p-accent: #9a6420;
+  --f-mast: "Alfa Slab One", "Rockwell", Georgia, serif;
+  --f-head: "Libre Caslon Text", Georgia, serif;
+  --f-body: "Libre Caslon Text", Georgia, serif;
+  --f-label: "DM Mono", ui-monospace, monospace;
+  --img-filter: sepia(.35) saturate(.8);
+}
+/* dark, following the system when the paper is on Auto */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .reader[data-mode="auto"] { --p-bg: #161615; --p-ink: #e6e3da; --p-muted: #a29e93; --p-rule: #e6e3da; --p-soft: #22211f; --p-accent: #e0715f; color-scheme: dark; }
+  :root:not([data-theme="light"]) .reader[data-mode="auto"][data-look="magazine"] { --p-bg: #0e0f12; --p-ink: #f1f1ee; --p-muted: #9a9ca5; --p-rule: #2a2c33; --p-soft: #191b20; --p-accent: #7f93ff; }
+  :root:not([data-theme="light"]) .reader[data-mode="auto"][data-look="bayou"] { --p-bg: #141a16; --p-ink: #e8e0cd; --p-muted: #a6a691; --p-rule: #6fa597; --p-soft: #1d2520; --p-accent: #d9a04e; }
+}
+:root[data-theme="dark"] .reader[data-mode="auto"], .reader[data-mode="dark"] { --p-bg: #161615; --p-ink: #e6e3da; --p-muted: #a29e93; --p-rule: #e6e3da; --p-soft: #22211f; --p-accent: #e0715f; color-scheme: dark; }
+:root[data-theme="dark"] .reader[data-mode="auto"][data-look="magazine"], .reader[data-mode="dark"][data-look="magazine"] { --p-bg: #0e0f12; --p-ink: #f1f1ee; --p-muted: #9a9ca5; --p-rule: #2a2c33; --p-soft: #191b20; --p-accent: #7f93ff; }
+:root[data-theme="dark"] .reader[data-mode="auto"][data-look="bayou"], .reader[data-mode="dark"][data-look="bayou"] { --p-bg: #141a16; --p-ink: #e8e0cd; --p-muted: #a6a691; --p-rule: #6fa597; --p-soft: #1d2520; --p-accent: #d9a04e; }
+.reader[data-mode="sepia"][data-look] { --p-bg: #f2e4c6; --p-ink: #3a2a19; --p-muted: #75614a; --p-soft: #e8d6b2; color-scheme: light; }
+.reader[data-mode="sepia"][data-look="broadsheet"] { --p-rule: #3a2a19; }
+.reader[data-mode="sepia"][data-look="magazine"] { --p-rule: #dcc8a2; --p-accent: #7a3b12; }
+.reader[data-mode="sepia"][data-look="bayou"] { --p-rule: #5b4a2c; }
+
+/* ---------- The book ---------- */
+.book {
+  position: relative; height: min(780px, calc(100vh - 210px)); min-height: 560px;
+  perspective: 2000px; border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 24px 50px -24px rgba(0,0,0,.35);
+}
+.reader[data-look="magazine"] .book { border-radius: 22px; }
+.page {
+  position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  background: var(--p-bg); color: var(--p-ink); font-family: var(--f-body);
+  padding: 18px 20px 26px; border-radius: inherit;
+  visibility: hidden; transform-origin: left center; backface-visibility: hidden;
+  scrollbar-width: thin;
+}
+.reader[data-look="magazine"] .page { padding: 20px 22px 28px; }
+.page.is-current { visibility: visible; z-index: 2; }
+.page.is-under { visibility: visible; z-index: 1; }
+.page.turn-fwd, .page.turn-back { visibility: visible; z-index: 3; }
+.page::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; background: linear-gradient(90deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.28)); }
+
+/* paper looks: the sheet lifts from the spine */
+.page.turn-fwd { animation: leafOut .7s cubic-bezier(.55,.05,.35,1) forwards; }
+.page.turn-back { animation: leafIn .7s cubic-bezier(.55,.05,.35,1) forwards; }
+.page.turn-fwd::after { animation: shade .7s ease forwards; }
+.page.turn-back::after { animation: shade .7s ease reverse forwards; }
+@keyframes leafOut { from { transform: rotateY(0); } to { transform: rotateY(-105deg); } }
+@keyframes leafIn { from { transform: rotateY(-105deg); } to { transform: rotateY(0); } }
+@keyframes shade { from { opacity: 0; } to { opacity: 1; } }
+/* magazine: a card slide with depth */
+.reader[data-look="magazine"] .page.turn-fwd { animation: slideOut .55s cubic-bezier(.6,0,.2,1) forwards; }
+.reader[data-look="magazine"] .page.turn-back { animation: slideIn .55s cubic-bezier(.6,0,.2,1) forwards; }
+.reader[data-look="magazine"] .page.is-under { animation: settle .55s cubic-bezier(.6,0,.2,1); }
+.reader[data-look="magazine"] .page::after { display: none; }
+@keyframes slideOut { to { transform: translateX(-108%) rotate(-2deg); } }
+@keyframes slideIn { from { transform: translateX(-108%) rotate(-2deg); } to { transform: none; } }
+@keyframes settle { from { transform: scale(.94); filter: brightness(.9); } to { transform: none; filter: none; } }
+
+/* list mode: one long scroll */
+.book.list { height: auto; min-height: 0; perspective: none; display: grid; gap: 0; overflow: hidden; }
+.book.list .page { position: static; visibility: visible; overflow: visible; border-radius: 0; animation: rise .5s ease both; }
+.book.list .page + .page { border-top: 1px solid var(--p-rule); }
+.reader[data-look="broadsheet"] .book.list .page + .page { border-top: 3px double var(--p-rule); }
+@keyframes rise { from { transform: translateY(14px); opacity: .2; } to { transform: none; opacity: 1; } }
+
+.turnbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+.turnbar button { font: 600 13px/1 var(--ui); background: var(--chip); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+.turnbar button:disabled { opacity: .35; cursor: default; }
+.turnbar .where { font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; min-width: 0; }
+.book.list ~ .turnbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page.turn-fwd, .page.turn-back, .reader[data-look] .page.turn-fwd, .reader[data-look] .page.turn-back, .reader[data-look] .page.is-under, .book.list .page { animation: fade .2s ease forwards; }
+  .page.turn-fwd { animation-name: fadeOut; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeOut { to { opacity: 0; } }
+}
+
+/* ---------- Shared page parts ---------- */
+.runhead { display: flex; justify-content: space-between; gap: 10px; font: 500 10px/1.3 var(--f-label); text-transform: uppercase; letter-spacing: .12em; color: var(--p-muted); padding-bottom: 8px; border-bottom: 1px solid var(--p-rule); margin-bottom: 14px; }
+.runhead { align-items: center; }
+.home { font: 600 10.5px/1 var(--f-label); text-transform: uppercase; letter-spacing: .12em; color: var(--p-accent); background: none; border: 1px solid var(--p-accent); padding: 6px 8px; cursor: pointer; }
+.home:hover { background: var(--p-accent); color: var(--p-bg); }
+.home:focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; }
+.turnbar .where { display: grid; gap: 6px; justify-items: center; }
+.turnbar .where button { padding: 6px 10px; font-size: 11.5px; }
+.label { font: 600 10.5px/1.2 var(--f-label); text-transform: uppercase; letter-spacing: .12em; color: var(--p-accent); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+p { margin: 0; }
+
+.mast { text-align: center; display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 3px double var(--p-rule); }
+.mast-name { font-family: var(--f-mast); font-weight: 700; font-size: 40px; line-height: 1; letter-spacing: .01em; }
+.dateline { font: 500 10.5px/1.3 var(--f-label); text-transform: uppercase; letter-spacing: .14em; color: var(--p-muted); display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 10px; border-top: 1px solid var(--p-rule); padding-top: 6px; }
+.verse { font-style: italic; font-size: 13.5px; line-height: 1.4; color: var(--p-ink); }
+.verse cite { font-style: normal; font-family: var(--f-label); font-size: 10.5px; letter-spacing: .08em; color: var(--p-muted); display: block; margin-top: 2px; }
+
+.wx { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 12px 0 14px; border: 1px solid var(--p-rule); font-family: var(--f-label); }
+.wx > div { padding: 8px 10px; display: grid; gap: 3px; min-width: 0; }
+.wx > div + div { border-left: 1px solid var(--p-rule); }
+.wx .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--p-muted); }
+.wx .big { font-size: 22px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.wx .v { font-size: 11.5px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+
+.lead { display: grid; gap: 9px; padding-bottom: 14px; border-bottom: 1px solid var(--p-rule); }
+.lead h2 { font-family: var(--f-head); font-weight: 700; font-size: 29px; line-height: 1.05; }
+.deck { font-size: 15px; line-height: 1.45; }
+.why { font-size: 13.5px; line-height: 1.45; color: var(--p-ink); padding-left: 10px; border-left: 2px solid var(--p-accent); }
+.why b { font-family: var(--f-label); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--p-accent); display: block; margin-bottom: 2px; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font: 500 11px/1.2 var(--f-label); color: var(--p-muted); }
+.meta a { color: var(--p-accent); text-decoration: none; font-weight: 600; }
+.meta a:hover { text-decoration: underline; }
+.tag { justify-self: start; font: 600 9.5px/1 var(--f-label); text-transform: uppercase; letter-spacing: .12em; padding: 4px 6px; border: 1px solid currentColor; color: var(--p-muted); }
+.tag.news { color: var(--p-accent); }
+
+.actions { display: flex; gap: 6px; }
+.actions button { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--f-label); color: var(--p-ink); background: transparent; border: 1px solid var(--p-rule); border-radius: 999px; padding: 6px 10px; cursor: pointer; transition: background .15s, color .15s, transform .15s; }
+.actions button:active { transform: scale(.94); }
+.actions button[aria-pressed="true"] { background: var(--p-ink); color: var(--p-bg); }
+.actions button:focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; }
+.actions svg { width: 14px; height: 14px; }
+
+.img { position: relative; aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; filter: var(--img-filter); background: var(--scene); }
+.img::before { content: ""; position: absolute; inset: 0; background: var(--detail, none); }
+.img figcaption { position: absolute; left: 8px; bottom: 6px; font: 500 9px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.88); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.reader[data-look="broadsheet"] .img::after { content: ""; position: absolute; inset: 0; background: radial-gradient(rgba(0,0,0,.28) 1px, transparent 1.4px) 0 0 / 4px 4px; mix-blend-mode: multiply; }
+.reader[data-look="bayou"] .img { border: 1px solid var(--p-rule); }
+
+.index { display: grid; margin-top: 12px; }
+.index h3 { font: 600 10.5px/1 var(--f-label); text-transform: uppercase; letter-spacing: .14em; color: var(--p-muted); padding-bottom: 8px; }
+.index button { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; padding: 8px 0; border: 0; border-top: 1px solid var(--p-rule); background: none; color: inherit; font: inherit; cursor: pointer; }
+.index button:focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; }
+.index .n { font-family: var(--f-head); font-weight: 700; font-size: 15px; }
+.index .t { grid-column: 1; font-size: 12.5px; color: var(--p-muted); line-height: 1.35; }
+.index .pg { grid-row: 1 / span 2; grid-column: 2; align-self: center; font: 500 11px/1 var(--f-label); color: var(--p-muted); font-variant-numeric: tabular-nums; }
+
+.sec-head { display: grid; gap: 4px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 3px double var(--p-rule); }
+.sec-head h2 { font-family: var(--f-head); font-weight: 700; font-size: 34px; line-height: 1; }
+.items { display: grid; gap: 16px; }
+.item { display: grid; gap: 8px; }
+.item + .item { padding-top: 16px; border-top: 1px solid var(--p-rule); }
+.item h3 { font-family: var(--f-head); font-weight: 700; font-size: 21px; line-height: 1.12; }
+.item.brief h3 { font-size: 17px; }
+.item .deck { font-size: 14.5px; }
+
+.ticker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--p-rule); margin-bottom: 14px; font-family: var(--f-label); }
+.ticker div { padding: 7px 8px; display: grid; gap: 2px; min-width: 0; }
+.ticker div:nth-child(n+4) { border-top: 1px solid var(--p-rule); }
+.ticker div:not(:nth-child(3n+1)) { border-left: 1px solid var(--p-rule); }
+.ticker .s { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--p-muted); }
+.ticker .q { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ticker .c { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.up { color: color-mix(in oklab, #2e8a55 70%, var(--p-ink)); } .dn { color: color-mix(in oklab, #c2412f 75%, var(--p-ink)); }
+
+.endmark { text-align: center; margin-top: 22px; font: 500 10px/1 var(--f-label); letter-spacing: .2em; color: var(--p-muted); text-transform: uppercase; }
+
+/* ---------- Broadsheet specifics ---------- */
+.reader[data-look="broadsheet"] .mast-name { font-size: 42px; }
+.reader[data-look="broadsheet"] .lead h2 { text-transform: none; font-size: 30px; }
+.reader[data-look="broadsheet"] .lead .deck { column-count: 2; column-gap: 16px; column-rule: 1px solid var(--p-rule); font-size: 13.5px; text-align: justify; hyphens: auto; }
+.reader[data-look="broadsheet"] .lead .deck::first-letter { float: left; font-family: var(--f-head); font-weight: 700; font-size: 44px; line-height: .85; padding: 3px 5px 0 0; }
+
+/* ---------- Magazine specifics ---------- */
+.reader[data-look="magazine"] .mast { text-align: left; border-bottom: 0; padding-bottom: 4px; }
+.reader[data-look="magazine"] .mast-name { font-size: 46px; font-weight: 900; font-stretch: 62%; text-transform: uppercase; letter-spacing: -.01em; line-height: .9; }
+.reader[data-look="magazine"] .mast-name span { color: var(--p-accent); }
+.reader[data-look="magazine"] .dateline { justify-content: flex-start; border-top: 0; padding-top: 0; }
+.reader[data-look="magazine"] .verse { font-size: 15px; }
+.reader[data-look="magazine"] .wx { border: 0; background: var(--p-soft); border-radius: 14px; }
+.reader[data-look="magazine"] .wx > div + div { border-left: 1px solid var(--p-rule); }
+.reader[data-look="magazine"] .lead { border-bottom: 0; }
+.reader[data-look="magazine"] .lead .img, .reader[data-look="magazine"] .item:first-child .img { margin-inline: -22px; aspect-ratio: 4 / 3; }
+.reader[data-look="magazine"] .lead h2 { font-weight: 800; font-stretch: 85%; font-size: 34px; letter-spacing: -.015em; line-height: .98; }
+.reader[data-look="magazine"] .item h3 { font-weight: 750; font-stretch: 90%; letter-spacing: -.01em; }
+.reader[data-look="magazine"] .sec-head { border-bottom: 0; }
+.reader[data-look="magazine"] .sec-head h2 { font-size: 52px; font-weight: 900; font-stretch: 62%; text-transform: uppercase; line-height: .88; }
+.reader[data-look="magazine"] .why { border-left: 0; padding: 10px 12px; background: var(--p-soft); border-radius: 10px; }
+.reader[data-look="magazine"] .tag { border: 0; background: var(--p-accent); color: var(--p-bg); border-radius: 4px; }
+.reader[data-look="magazine"] .tag:not(.news) { background: var(--p-soft); color: var(--p-ink); }
+.reader[data-look="magazine"] .ticker, .reader[data-look="magazine"] .ticker div { border-color: transparent; }
+.reader[data-look="magazine"] .ticker { background: var(--p-soft); border-radius: 14px; }
+.reader[data-look="magazine"] .index button { border-top-color: var(--p-rule); }
+.reader[data-look="magazine"] .index .n { font-weight: 750; font-stretch: 90%; }
+.reader[data-look="magazine"] .runhead { border-bottom: 0; }
+.reader[data-look="magazine"] .item + .item { border-top: 0; }
+.reader[data-look="magazine"] .actions button { border-color: transparent; background: var(--p-soft); }
+.reader[data-look="magazine"] .actions button[aria-pressed="true"] { background: var(--p-accent); color: #fff; }
+
+/* ---------- Bayou specifics ---------- */
+.reader[data-look="bayou"] .page { background-image: radial-gradient(circle at 20% 10%, rgba(154,100,32,.06), transparent 40%), radial-gradient(circle at 90% 80%, rgba(47,90,82,.07), transparent 45%); background-color: var(--p-bg); }
+.reader[data-look="bayou"] .mast { border-bottom: 0; gap: 8px; }
+.reader[data-look="bayou"] .mast-name { font-weight: 400; font-size: 34px; letter-spacing: .02em; color: var(--p-rule); text-transform: uppercase; }
+.reader[data-look="bayou"] .mast-name small { display: block; font-family: var(--f-label); font-size: 9.5px; letter-spacing: .32em; color: var(--p-accent); margin-bottom: 6px; }
+.reader[data-look="bayou"] .dateline { border-top: 1px solid var(--p-rule); border-bottom: 1px solid var(--p-rule); padding: 6px 0; }
+.reader[data-look="bayou"] .ornament { display: flex; align-items: center; gap: 10px; color: var(--p-accent); justify-content: center; }
+.reader[data-look="bayou"] .ornament::before, .reader[data-look="bayou"] .ornament::after { content: ""; height: 1px; flex: 1; background: var(--p-accent); opacity: .6; }
+.reader[data-look="bayou"] .wx { border-color: var(--p-accent); background: var(--p-soft); }
+.reader[data-look="bayou"] .wx > div + div { border-left-color: var(--p-accent); }
+.reader[data-look="bayou"] .lead h2, .reader[data-look="bayou"] .sec-head h2 { font-weight: 700; }
+.reader[data-look="bayou"] .sec-head { border-bottom: 1px solid var(--p-rule); text-align: center; }
+.reader[data-look="bayou"] .sec-head h2 { font-family: var(--f-mast); font-weight: 400; color: var(--p-rule); text-transform: uppercase; font-size: 30px; letter-spacing: .03em; }
+.reader[data-look="bayou"] .tag { border-radius: 2px; border-style: dashed; }
+.reader[data-look="bayou"] .actions button { border-radius: 3px; }
+.ornament { display: none; }
+.reader[data-look="bayou"] .ornament svg { width: 16px; height: 16px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; background: var(--chip-on); color: var(--chip-on-fg); font: 500 13px/1.35 var(--ui); padding: 10px 14px; border-radius: 10px; max-width: min(420px, calc(100vw - 32px)); transition: opacity .2s, transform .2s; z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 420px) {
+  .mast-name { font-size: 34px; }
+  .reader[data-look="magazine"] .mast-name { font-size: 40px; }
+  .lead h2 { font-size: 25px; }
+  .reader[data-look="broadsheet"] .lead .deck { column-count: 1; }
+  .book { height: calc(100vh - 230px); min-height: 520px; }
+}
+</style>
+
+<div class="shell">
+  <p class="note"><b>Mockup with a sample edition.</b> The headlines, figures and times are made up for layout. Swipe or use the arrows to turn pages, and try the 👍, 👎 and Save buttons.</p>
+
+  <div class="toolbar" role="group" aria-label="Mockup controls">
+    <div class="ctl"><span>Look</span>
+      <div class="seg" id="look">
+        <button type="button" data-v="broadsheet">Broadsheet</button>
+        <button type="button" data-v="magazine">Magazine</button>
+        <button type="button" data-v="bayou">Bayou</button>
+      </div>
+    </div>
+    <div class="ctl"><span>Read as</span>
+      <div class="seg" id="mode">
+        <button type="button" data-v="pages">Pages</button>
+        <button type="button" data-v="list">List</button>
+      </div>
+    </div>
+    <div class="ctl"><span>Paper</span>
+      <div class="seg" id="paper">
+        <button type="button" data-v="auto">Auto</button>
+        <button type="button" data-v="light">Light</button>
+        <button type="button" data-v="sepia">Sepia</button>
+        <button type="button" data-v="dark">Dark</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="reader" id="reader" data-look="broadsheet" data-mode="auto">
+    <div class="book" id="book" aria-live="polite"></div>
+    <div class="turnbar">
+      <button type="button" id="prev" aria-label="Previous page">‹ Back</button>
+      <div class="where" id="where"></div>
+      <button type="button" id="next" aria-label="Next page">Next ›</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const SCENES = {
+  dawn:   ["linear-gradient(180deg,#f6c38a 0%,#e98a5a 38%,#5a6e86 39%,#31445a 100%)", "radial-gradient(circle at 70% 36%, #ffe7b0 0 7%, transparent 7.5%)"],
+  money:  ["linear-gradient(160deg,#1e3a5f,#3f6e8c 55%,#9cc3cf)", "repeating-linear-gradient(90deg, transparent 0 22px, rgba(255,255,255,.12) 22px 24px)"],
+  marsh:  ["linear-gradient(180deg,#b9d3cf 0%,#8fb5b0 45%,#3d6b5e 46%,#264a3f 100%)", "repeating-linear-gradient(100deg, transparent 0 9px, rgba(20,40,30,.35) 9px 10px)"],
+  water:  ["linear-gradient(180deg,#e4d1a8 0%,#c9a56b 40%,#406c78 41%,#23434d 100%)", "repeating-linear-gradient(0deg, transparent 0 6px, rgba(255,255,255,.08) 6px 7px)"],
+  church: ["linear-gradient(180deg,#d9c7a3,#a88a5e 60%,#5b4632)", "radial-gradient(ellipse at 50% 100%, rgba(255,240,200,.55), transparent 55%)"],
+  cloth:  ["linear-gradient(135deg,#6b4a3a,#a07a5e 50%,#3c2e2a)", "repeating-linear-gradient(45deg, transparent 0 4px, rgba(0,0,0,.12) 4px 5px)"],
+  road:   ["linear-gradient(180deg,#9ec6e0 0%,#d9e8ef 48%,#6f8a4d 49%,#40552c 100%)", "linear-gradient(100deg, transparent 47%, #c9b98c 47% 53%, transparent 53%)"],
+  tech:   ["linear-gradient(135deg,#1b1f3a,#3b2f6b 55%,#0f6b7a)", "radial-gradient(circle at 30% 40%, rgba(120,220,255,.35), transparent 30%)"],
+  green:  ["linear-gradient(180deg,#cfe3c4,#8db27c 55%,#4e7444)", "radial-gradient(circle at 75% 25%, rgba(255,255,230,.6), transparent 25%)"],
+  house:  ["linear-gradient(180deg,#bcd2e4 0%,#e6edf2 55%,#8a6f55 56%,#5f4b39 100%)", "linear-gradient(90deg, transparent 30%, rgba(255,255,255,.55) 30% 70%, transparent 70%)"]
+};
+
+const SECTIONS = [
+  { name: "Health & Wellness", desk: "Body & Spirit", scene: "green", items: [
+    { kind: "News", title: "A 10-minute walk after dinner flattens blood-sugar spikes, a new trial finds", deck: "Adults who walked briefly after their evening meal had smaller glucose rises than those who sat, with the biggest effect in the first hour.", why: "An easy add to the fitness notes you keep with your editor.", src: "Health journal", min: 4 },
+    { kind: "Evergreen", title: "Keeping strength training going through a busy season", deck: "Two short full-body sessions a week hold most of your gains; the guide lays out a 30-minute version.", src: "Training guide", min: 6 } ] },
+  { name: "Spiritual Growth", desk: "Body & Spirit", scene: "dawn", items: [
+    { kind: "Evergreen", title: "The evening review: an old Stoic habit that pairs well with prayer", deck: "Seneca ended each day by asking what he did well and what he would do differently. Many Christians keep a similar examen.", why: "Ties your Stoic practice to a nightly reflection.", src: "Essay", min: 7 },
+    { kind: "News", title: "A pastor makes the case for a weekly Sabbath from screens", deck: "One congregation tried a phone-free Sunday for a month and reports on what changed at home.", src: "Magazine", min: 5 } ] },
+  { name: "Faith", desk: "Body & Spirit", scene: "church", items: [
+    { kind: "News", title: "Gulf Coast churches pool volunteers for storm-recovery work", deck: "Congregations across three dioceses and several denominations are sharing one volunteer roster and tool library this season.", why: "Local, and a way to serve if you want one.", src: "Regional news", min: 4 },
+    { kind: "News", title: "Scholars digitize a trove of early New Testament fragments", deck: "High-resolution scans of more than 200 papyri are now free to browse, with notes on how readings differ.", src: "Research", min: 6 },
+    { kind: "Brief", title: "Jewish and Muslim groups co-host a Baton Rouge food drive", deck: "The drive runs through Thanksgiving at two locations.", src: "Local", min: 2 } ] },
+  { name: "Travel", desk: "Outdoors & Travel", scene: "road", items: [
+    { kind: "News", title: "Late fall is the cheapest window for New Orleans flights to Mexico", deck: "Fares on several nonstop routes drop by about a third between early November and mid-December.", why: "A short-notice trip from MSY without the holiday prices.", src: "Travel desk", min: 3 },
+    { kind: "Evergreen", title: "A three-day drive up the Natchez Trace", deck: "Where to stop, where to sleep and which stretches to skip if you have only a weekend.", src: "Guide", min: 8 } ] },
+  { name: "Fishing", desk: "Outdoors & Travel", scene: "water", items: [
+    { kind: "Seasonal", title: "Speckled trout move into the marsh as the water cools", deck: "Falling water temperatures push trout toward bayou mouths and drains on the falling tide.", why: "Prime weekends for the coastal marsh start about now.", src: "Outdoors column", min: 5 },
+    { kind: "Seasonal", title: "This week's solunar peaks favor early mornings", deck: "Major periods fall near sunrise through Saturday, lining up with the first of the cooler fronts.", src: "Solunar table", min: 2 } ] },
+  { name: "Hunting", desk: "Outdoors & Travel", scene: "marsh", items: [
+    { kind: "Seasonal", title: "Duck season outlook: what this year's breeding survey means for Louisiana", deck: "Breeding numbers came in near the long-term average; biologists expect the coastal zone to depend on how hard the fronts push.", why: "Opening weekend planning, with zone dates in the full piece.", src: "Wildlife agency", min: 6 },
+    { kind: "Evergreen", title: "Reading the rut across Louisiana's deer zones", deck: "Peak breeding differs by weeks between zones; the guide maps when to expect the most movement.", src: "Hunting guide", min: 7 } ] },
+  { name: "Fashion", desk: "Style", scene: "cloth", items: [
+    { kind: "Evergreen", title: "Fall layering for a warm climate: let the overshirt do the work", deck: "A mid-weight overshirt over a tee covers a 60-to-80-degree day better than a jacket.", why: "Built for Baton Rouge's long, warm fall.", src: "Style desk", min: 4 },
+    { kind: "Evergreen", title: "Boots worth resoling: a buyer's guide", deck: "Goodyear-welted boots can be rebuilt for years; here is how to spot the construction in the store.", src: "Guide", min: 6 } ] },
+  { name: "Economy", desk: "Money", scene: "money", ticker: true, items: [
+    { kind: "News", title: "Consumer spending holds up as hiring cools", deck: "Retail sales rose modestly last month even as job growth slowed, with services doing most of the lifting.", why: "Context for today's lead on rates.", src: "Wire", min: 4 } ] },
+  { name: "Real Estate", desk: "Money", scene: "house", items: [
+    { kind: "News", title: "Baton Rouge listings rise for a sixth straight month", deck: "More homes on the market and longer days-to-sale are giving buyers room to negotiate on price and repairs.", why: "Local leverage if you are watching the market.", src: "Local market report", min: 4 },
+    { kind: "News", title: "Flood insurance changes buyers should check before closing", deck: "Premiums now track a property's own risk more closely; the quote can differ a lot between neighboring houses.", src: "Explainer", min: 6 } ] },
+  { name: "Business", desk: "Money", scene: "money", items: [
+    { kind: "News", title: "Small manufacturers bet on Gulf Coast reshoring", deck: "Several mid-size firms are moving production from overseas to Louisiana and Texas, citing shipping costs and incentives.", src: "Business news", min: 5 },
+    { kind: "News", title: "What a four-day week did to one regional bank", deck: "A year in, the bank reports lower turnover and steady customer scores, with some teams struggling to cover Fridays.", src: "Case study", min: 6 } ] },
+  { name: "Start-ups & Investing", desk: "Money", scene: "tech", items: [
+    { kind: "News", title: "Seed rounds shrink, but more founders reach profit sooner", deck: "Smaller first checks are pushing start-ups to charge earlier, and more are breaking even within two years.", why: "A shift in what early investors now look for.", src: "Venture report", min: 5 },
+    { kind: "Evergreen", title: "Index funds or stock picking: the long-run numbers", deck: "Over 20 years most actively managed funds trail their index after fees; the piece shows where that changes.", src: "Investing guide", min: 7 } ] },
+  { name: "Technology", desk: "Technology", scene: "tech", items: [
+    { kind: "News", title: "On-device AI assistants reach mid-range phones", deck: "Assistants that run without the cloud are arriving on cheaper models, with tradeoffs in battery and speed.", why: "Whether your next phone needs to be a flagship.", src: "Tech news", min: 5 },
+    { kind: "News", title: "Home batteries get cheaper: what it means in hurricane country", deck: "Prices for whole-home battery systems fell again this year; installers say outage backup is the main reason Gulf buyers sign.", src: "Energy desk", min: 6 } ] }
+];
+
+const LEAD = { kind: "News", label: "Today's lead · Economy", title: "Mortgage rates dip to a 14-month low as the Fed signals a pause", deck: "Thirty-year fixed rates fell for a third straight week after the central bank said it would hold steady through the winter. Lenders report a jump in refinancing applications, and builders say buyer traffic picked up in the South.", why: "Ties together your Economy, Real Estate and Investing sections: rates, local prices and what to do with cash this season.", src: "Wire report", min: 6, scene: "house" };
+
+const TICKER = [["S&P 500","6,812","+0.4%",1],["Dow","48,930","+0.2%",1],["Nasdaq","22,410","+0.7%",1],["10-yr","3.92%","−0.05",0],["30-yr mort.","5.71%","−0.09",0],["WTI oil","$68.40","−1.1%",0]];
+
+const NAMES = {
+  broadsheet: '<h1 class="mast-name">The Riverside Gazette</h1>',
+  magazine: '<h1 class="mast-name">Riverside<span>/</span>Daily</h1>',
+  bayou: '<h1 class="mast-name"><small>Est. 2026 · Baton Rouge</small>The Red Stick Courier</h1>'
+};
+
+const ICON = {
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v11H3V10z"/><path d="M7 10l4-8a3 3 0 0 1 3 3v4h6a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2H7"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V3h4v11z"/><path d="M17 14l-4 8a3 3 0 0 1-3-3v-4H4a2 2 0 0 1-2-2l2-8a2 2 0 0 1 2-2h11"/></svg>',
+  save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
+  cross: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2h4v6h6v4h-6v10h-4V12H4V8h6z"/></svg>'
+};
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let uid = 0;
+
+function figure(scene) {
+  const [bg, det] = SCENES[scene];
+  return `<figure class="img" style="--scene:${bg};--detail:${det};margin:0"><figcaption>Photo saved with the edition</figcaption></figure>`;
+}
+function actions(title) {
+  const id = ++uid;
+  return `<div class="actions" data-title="${esc(title)}">
+    <button type="button" id="up${id}" data-a="up" aria-pressed="false" aria-label="More like this">${ICON.up}</button>
+    <button type="button" id="dn${id}" data-a="down" aria-pressed="false" aria-label="Not for me">${ICON.down}</button>
+    <button type="button" id="sv${id}" data-a="save" aria-pressed="false">${ICON.save}<span>Save</span></button>
+  </div>`;
+}
+function tag(kind) { return `<span class="tag ${kind === "News" ? "news" : ""}">${kind}</span>`; }
+function meta(it) { return `<div class="meta"><span>${esc(it.src)}</span><span>~${it.min} min</span><a href="#" data-read>Read the piece ›</a></div>`; }
+function runhead(left, right) { return `<div class="runhead"><span>${left}</span><span>${right}</span></div>`; }
+
+function front() {
+  const idx = SECTIONS.map((s, i) => `<button type="button" data-go="${i + 1}"><span class="n">${esc(s.name)}</span><span class="t">${esc(s.items[0].title)}</span><span class="pg">p.${i + 2}</span></button>`).join("");
+  return `<article class="page front">
+    <header class="mast">
+      <div class="ornament">${ICON.cross}</div>
+      ${NAMES[look]}
+      <div class="dateline"><span>Wednesday, October 28, 2026</span><span>Baton Rouge</span><span>No. 1</span></div>
+      <p class="verse">“Commit thy works unto the LORD, and thy thoughts shall be established.”<cite>Proverbs 16:3 (KJV)</cite></p>
+    </header>
+    <section class="wx" aria-label="Weather and solunar">
+      <div><span class="k">Baton Rouge</span><span class="big">78° / 61°</span><span class="v">Clear, light north wind<br>Sunrise 7:14 · Sunset 6:22</span></div>
+      <div><span class="k">Solunar · Waxing gibbous</span><span class="v"><b>Major</b> 5:40–7:40 am<br><b>Major</b> 6:05–8:05 pm<br><b>Minor</b> 12:10 pm</span></div>
+    </section>
+    <div class="lead">
+      <span class="label">${LEAD.label}</span>
+      <h2>${esc(LEAD.title)}</h2>
+      ${figure(LEAD.scene)}
+      <p class="deck">${esc(LEAD.deck)}</p>
+      <p class="why"><b>Why it's on the front page</b>${esc(LEAD.why)}</p>
+      ${meta(LEAD)}
+      ${actions(LEAD.title)}
+    </div>
+    <nav class="index" aria-label="Sections"><h3>Inside today · 12 sections</h3>${idx}</nav>
+  </article>`;
+}
+
+function section(s, i) {
+  const tick = s.ticker ? `<div class="ticker" aria-label="Markets">${TICKER.map(t => `<div><span class="s">${t[0]}</span><span class="q">${t[1]}</span><span class="c ${t[3] ? "up" : "dn"}">${t[2]}</span></div>`).join("")}</div>` : "";
+  const items = s.items.map((it, j) => `<div class="item ${j > 0 ? "brief" : ""}">
+      ${j === 0 ? figure(s.scene) : ""}
+      ${tag(it.kind)}
+      <h3>${esc(it.title)}</h3>
+      <p class="deck">${esc(it.deck)}</p>
+      ${it.why ? `<p class="why"><b>For you</b>${esc(it.why)}</p>` : ""}
+      ${meta(it)}
+      ${actions(it.title)}
+    </div>`).join("");
+  const last = i === SECTIONS.length - 1 ? `<p class="endmark">— 30 — · End of today's paper</p>` : "";
+  return `<article class="page">
+    ${runhead(`<button type="button" class="home" data-go="0">‹ Front page</button>`, `${esc(s.desk)} · p.${i + 2} of ${SECTIONS.length + 1}`)}
+    <header class="sec-head"><span class="label">Section ${i + 1} of ${SECTIONS.length}</span><h2>${esc(s.name)}</h2></header>
+    ${tick}<div class="items">${items}</div>${last}
+  </article>`;
+}
+
+const $ = id => document.getElementById(id);
+const reader = $("reader"), book = $("book");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+let look = "broadsheet", mode = "pages", paper = "auto", cur = 0, busy = false, pages = [];
+const pressed = {};
+
+function store(k, v) { try { localStorage.setItem("paper-mock-" + k, v); } catch (e) {} }
+function recall(k) { try { return localStorage.getItem("paper-mock-" + k); } catch (e) { return null; } }
+
+function render() {
+  uid = 0;
+  book.innerHTML = front() + SECTIONS.map(section).join("");
+  pages = [...book.querySelectorAll(".page")];
+  pages.forEach((p, i) => p.classList.toggle("is-current", i === cur));
+  book.querySelectorAll(".actions").forEach(a => a.querySelectorAll("button").forEach(b => {
+    if (pressed[b.id]) b.setAttribute("aria-pressed", "true");
+  }));
+  sync();
+}
+
+function sync() {
+  reader.dataset.look = look; reader.dataset.mode = paper;
+  book.classList.toggle("list", mode === "list");
+  for (const [id, v] of [["look", look], ["mode", mode], ["paper", paper]])
+    $(id).querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+  $("prev").disabled = cur === 0; $("next").disabled = cur === pages.length - 1;
+  $("where").innerHTML = cur === 0 ? `<span>Front page · 1 of ${pages.length}</span>` : `<span>${esc(SECTIONS[cur - 1].name)} · ${cur + 1} of ${pages.length}</span><button type="button" id="homebtn">⌂ Front page</button>`;
+  const hb = $("homebtn"); if (hb) hb.onclick = () => go(0);
+}
+
+function go(to) {
+  if (mode === "list") { pages[to]?.scrollIntoView({ behavior: reduce.matches ? "auto" : "smooth", block: "start" }); return; }
+  if (busy || to === cur || to < 0 || to >= pages.length) return;
+  busy = true;
+  const from = pages[cur], next = pages[to], fwd = to > cur;
+  next.scrollTop = 0;
+  const moving = fwd ? from : next, staying = fwd ? next : from;
+  staying.classList.add("is-under");
+  if (!fwd) { from.classList.remove("is-current"); from.classList.add("is-under"); }
+  moving.classList.remove("is-current");
+  moving.classList.add(fwd ? "turn-fwd" : "turn-back");
+  let done = false;
+  const finish = () => {
+    if (done) return; done = true;
+    pages.forEach(p => p.classList.remove("turn-fwd", "turn-back", "is-under", "is-current"));
+    next.classList.add("is-current");
+    cur = to; busy = false; sync();
+  };
+  moving.addEventListener("animationend", finish, { once: true });
+  setTimeout(finish, 900);
+}
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+book.addEventListener("click", e => {
+  const g = e.target.closest("[data-go]");
+  if (g) { go(+g.dataset.go); return; }
+  if (e.target.closest("[data-read]")) { e.preventDefault(); toast("In the real paper this opens the article."); return; }
+  const b = e.target.closest(".actions button");
+  if (!b) return;
+  const on = b.getAttribute("aria-pressed") !== "true";
+  const row = b.parentElement;
+  if (on && b.dataset.a !== "save") row.querySelectorAll('[data-a="up"],[data-a="down"]').forEach(o => { o.setAttribute("aria-pressed", "false"); pressed[o.id] = false; });
+  b.setAttribute("aria-pressed", String(on)); pressed[b.id] = on;
+  if (!on) return;
+  toast({ up: "Noted. Your editor will look for more like this.", down: "Noted. Your editor will show less like this.", save: "Saved. Your editor files it tomorrow morning." }[b.dataset.a]);
+});
+
+let sx = 0, sy = 0;
+book.addEventListener("pointerdown", e => { sx = e.clientX; sy = e.clientY; });
+book.addEventListener("pointerup", e => {
+  if (mode !== "pages") return;
+  const dx = e.clientX - sx, dy = e.clientY - sy;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) go(cur + (dx < 0 ? 1 : -1));
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") go(cur + 1);
+  if (e.key === "ArrowLeft") go(cur - 1);
+});
+$("prev").onclick = () => go(cur - 1);
+$("next").onclick = () => go(cur + 1);
+
+$("look").onclick = e => { const v = e.target.closest("button")?.dataset.v; if (!v) return; look = v; store("look", v); try { history.replaceState(null, "", "#" + v); } catch (err) {} render(); };
+$("mode").onclick = e => { const v = e.target.closest("button")?.dataset.v; if (!v) return; mode = v; store("mode", v); render(); };
+$("paper").onclick = e => { const v = e.target.closest("button")?.dataset.v; if (!v) return; paper = v; store("paper", v); sync(); };
+
+const fromHash = location.hash.slice(1);
+look = ["broadsheet", "magazine", "bayou"].includes(fromHash) ? fromHash : (recall("look") || "broadsheet");
+mode = recall("mode") === "list" ? "list" : "pages";
+paper = ["auto", "light", "sepia", "dark"].includes(recall("paper")) ? recall("paper") : "auto";
+render();
+</script>
