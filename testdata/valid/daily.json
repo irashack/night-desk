@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "lead": "economy-1",
+  "motto": {
+    "kind": "scripture",
+    "text": "Commit thy works unto the LORD, and thy thoughts shall be established.",
+    "source": "Proverbs 16:3 (KJV)"
+  },
+  "sections": [
+    {
+      "key": "health",
+      "items": [
+        {
+          "id": "health-1",
+          "kind": "evergreen",
+          "title": "A steadier morning walk",
+          "summary": "A short daily walk can be easier to sustain than an ambitious weekly workout.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/health",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "spiritual",
+      "items": [
+        {
+          "id": "spiritual-1",
+          "kind": "evergreen",
+          "title": "A moment of stillness",
+          "summary": "Set aside a quiet minute before the day begins.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/spiritual",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "faith",
+      "items": [
+        {
+          "id": "faith-1",
+          "kind": "news",
+          "title": "Neighbors organize a pantry collection",
+          "summary": "The community pantry is collecting shelf-stable food this weekend.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/faith",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "travel",
+      "items": [
+        {
+          "id": "travel-1",
+          "kind": "seasonal",
+          "title": "Plan a quieter autumn getaway",
+          "summary": "Check seasonal hours before visiting smaller parks and museums.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/travel",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "fishing",
+      "items": [
+        {
+          "id": "fishing-1",
+          "kind": "seasonal",
+          "title": "Cool water calls for patience",
+          "summary": "Adjust your approach as water temperatures fall.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/fishing",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "hunting",
+      "items": [
+        {
+          "id": "hunting-1",
+          "kind": "seasonal",
+          "title": "Review the fall checklist",
+          "summary": "Confirm local dates and equipment before heading into the field.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/hunting",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "fashion",
+      "items": [
+        {
+          "id": "fashion-1",
+          "kind": "evergreen",
+          "title": "Layers for changing weather",
+          "summary": "A light outer layer makes a cool morning more comfortable.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/fashion",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "economy-1",
+          "kind": "news",
+          "title": "The week ahead for household budgets",
+          "summary": "Watch the upcoming economic calendar before making short-term plans.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/economy",
+          "minutes": 4,
+          "why": "A weekly calendar can put a single headline into context.",
+          "image_url": "https://example.com/images/economy.jpg"
+        }
+      ]
+    },
+    {
+      "key": "real-estate",
+      "items": [
+        {
+          "id": "real-estate-1",
+          "kind": "evergreen",
+          "title": "Look beyond the asking price",
+          "summary": "Compare recurring costs as well as the purchase price.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/real-estate",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "business",
+      "items": [
+        {
+          "id": "business-1",
+          "kind": "brief",
+          "title": "Local shop adds a pickup window",
+          "summary": "The new service is intended to shorten the lunchtime queue.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/business",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "startups-investing",
+      "items": [
+        {
+          "id": "startups-investing-1",
+          "kind": "evergreen",
+          "title": "Read the assumptions behind a forecast",
+          "summary": "A projection is useful only when its inputs are clear.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/startups-investing",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "technology",
+      "items": [
+        {
+          "id": "technology-1",
+          "kind": "evergreen",
+          "title": "A practical backup check",
+          "summary": "Try restoring a small file before you need a full recovery.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/technology",
+          "minutes": 4
+        }
+      ]
+    }
+  ],
+  "boxes": {
+    "markets": {
+      "source": "Illustrative market snapshot",
+      "as_of": "2026-10-27T08:00:00-05:00",
+      "quotes": [
+        {
+          "symbol": "EXM",
+          "label": "Example index",
+          "value": "1,234.56",
+          "change": "+12.34 (1.01%)",
+          "direction": "up"
+        }
+      ]
+    }
+  }
+}

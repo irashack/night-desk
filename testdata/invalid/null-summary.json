@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "lead": "health-1",
+  "sections": [
+    {
+      "key": "health",
+      "items": [
+        {
+          "id": "health-1",
+          "kind": "evergreen",
+          "title": "A steadier morning walk",
+          "summary": null,
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/health",
+          "minutes": 4
+        }
+      ]
+    }
+  ]
+}

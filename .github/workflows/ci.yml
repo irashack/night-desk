@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Vet
+        run: go vet ./...
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Test
+        run: go test ./...
+      - name: Check generated contracts
+        run: |
+          go run ./internal/edition/schema-gen /tmp/edition-v1.json /tmp/edition-v2.json
+          cmp /tmp/edition-v1.json schema/edition-v1.json
+          cmp /tmp/edition-v2.json schema/edition-v2.json
+          go run ./internal/api/openapi-gen /tmp/openapi.json
+          cmp /tmp/openapi.json docs/reference/openapi.json
+      - name: Test web service worker
+        run: node --test web/sw_test.js
+
+  hermes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Test Hermes integration
+        working-directory: integrations/hermes
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest
+      - name: Build nightdesk
+        env:
+          CGO_ENABLED: '0'
+        run: go build -o "$RUNNER_TEMP/nightdesk" ./cmd/nightdesk
+      - name: Test Hermes conformance
+        working-directory: integrations/hermes
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          NIGHTDESK_BIN: ${{ runner.temp }}/nightdesk
+        run: python3 -m unittest test_conformance

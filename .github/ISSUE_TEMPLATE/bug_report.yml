@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a problem with Night Desk
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste keys, tokens, or reader identities. Redact them from logs and configuration before posting.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or image tag
+      description: Release version, image tag, or commit SHA.
+      placeholder: v0.1.0 or ghcr.io/irashack/night-desk:0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Container image (Docker or Podman)
+        - Kubernetes
+        - Binary or systemd
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Describe the problem, including steps to reproduce if possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or configuration
+      description: Redact keys, tokens, and reader identities before pasting.
+      render: shell
+    validations:
+      required: false

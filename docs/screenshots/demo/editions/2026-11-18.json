@@ -1,0 +1,123 @@
+{
+  "schema": 2,
+  "lead": "northgate-inspection",
+  "motto": {
+    "kind": "quotation",
+    "text": "Well begun is half done.",
+    "source": "Proverb"
+  },
+  "sections": [
+    {
+      "key": "world",
+      "items": [
+        {
+          "id": "quota-talks-final",
+          "kind": "news",
+          "title": "Coastal states enter the last night of fishing quota talks",
+          "summary": "Delegates say a shared catch ledger is within reach, though two states still want a longer phase-in.",
+          "source": "Meridian Wire",
+          "byline": "Anneliese Marrow",
+          "url": "https://meridian-wire.example/2026/11/18/quota-talks-final-night",
+          "minutes": 4
+        },
+        {
+          "id": "tunnel-test-run",
+          "kind": "brief",
+          "title": "Rail tunnel completes its last test run before opening",
+          "summary": "Engineers signed off on ventilation and signalling after a full-length run at line speed.",
+          "source": "The Continental Review",
+          "url": "https://continental-review.example/2026/11/18/tunnel-final-test",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "holiday-hiring",
+          "kind": "news",
+          "title": "Warehouses in the valley add 600 seasonal jobs",
+          "summary": "Employers are offering signing bonuses for night shifts as the port's busiest stretch begins.",
+          "source": "Bellmark Business Daily",
+          "byline": "Ines Halvard",
+          "url": "https://bellmark-business.example/2026/11/18/valley-holiday-hiring",
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "key": "science",
+      "items": [
+        {
+          "id": "comet-spotted",
+          "kind": "news",
+          "title": "Amateur astronomer spots a faint comet from the river path",
+          "summary": "The object, confirmed by the hilltop observatory, is expected to brighten over the next fortnight.",
+          "source": "Lattice Science",
+          "byline": "Wren Halloway",
+          "url": "https://lattice-science.example/2026/11/18/amateur-spots-comet",
+          "minutes": 4
+        }
+      ]
+    },
+    {
+      "key": "local",
+      "items": [
+        {
+          "id": "northgate-inspection",
+          "kind": "news",
+          "title": "Inspectors sign off on the new Northgate Bridge deck",
+          "summary": "With the load test passed, the city says the bridge could reopen to walkers and cyclists within days.",
+          "source": "The Riverside Courier",
+          "byline": "Maren Ashby",
+          "sources": [
+            {
+              "outlet": "Eastbank Gazette",
+              "url": "https://eastbank-gazette.example/2026/11/18/bridge-load-test",
+              "byline": "Colm Fairweather"
+            }
+          ],
+          "url": "https://riverside-courier.example/2026/11/18/northgate-deck-inspection",
+          "minutes": 4,
+          "image_url": "https://images.evening-ledger.example/demo/hills.jpg"
+        },
+        {
+          "id": "school-boundaries",
+          "kind": "news",
+          "title": "School board delays a vote on new attendance boundaries",
+          "summary": "Parents asked for more time to review maps that would move about 140 students between two elementary schools.",
+          "source": "Eastbank Gazette",
+          "byline": "Colm Fairweather",
+          "url": "https://eastbank-gazette.example/2026/11/18/school-boundary-vote-delayed",
+          "minutes": 3
+        },
+        {
+          "id": "tram-depot-market",
+          "kind": "brief",
+          "title": "Winter market vendors tour the old tram depot",
+          "summary": "The market association says heating and lighting are ready for a move this weekend.",
+          "source": "Harborline Radio",
+          "url": "https://harborline-radio.example/2026/11/18/vendors-tour-depot",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "opinion",
+      "items": [
+        {
+          "id": "bridge-patience",
+          "kind": "opinion",
+          "title": "The bridge repairs were worth the wait",
+          "summary": "Two years of detours bought a crossing that should last another century.",
+          "source": "Quarterlight Magazine",
+          "byline": "Odile Fenwick",
+          "url": "https://quarterlight.example/2026/11/18/bridge-worth-the-wait",
+          "minutes": 3,
+          "stance": "Doing the repair properly beat doing it fast."
+        }
+      ]
+    }
+  ]
+}

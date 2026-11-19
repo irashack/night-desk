@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "lead": "economy-1",
+  "sections": [
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "economy-1",
+          "kind": "news",
+          "title": "The week ahead for household budgets",
+          "summary": "Watch the upcoming economic calendar before making short-term plans.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/economy",
+          "minutes": 4,
+          "why": "A weekly calendar can put a single headline into context.",
+          "image_url": "https://example.com/images/economy.jpg"
+        }
+      ]
+    }
+  ]
+}

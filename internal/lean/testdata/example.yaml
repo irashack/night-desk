@@ -1,0 +1,30 @@
+# A made-up ratings file for Night Desk's tests. None of these outlets or
+# ratings describe a real publication.
+source:
+  name: Example Ratings Cooperative
+  url: https://ratings.example.org/method
+  license: CC0-1.0
+  attribution: Example Ratings Cooperative (example.org), CC0 1.0
+ratings:
+  - outlet: The Example Ledger
+    domains: [example.com]
+    lean: left
+    factuality: high
+  - outlet: Sample Gazette
+    domains: [news.example.org, gazette.example]
+    lean: center
+    factuality: mixed
+  - outlet: Placeholder Post
+    domains: [placeholder.example]
+    lean: lean-right
+  - outlet: Fictional Free Press
+    domains: [free.example]
+    lean: right
+    factuality: mostly-factual
+  - outlet: Demo Daily
+    domains: [daily.example]
+    lean: lean-left
+    factuality: very-high
+  - outlet: Illustrative Independent
+    domains: [independent.example]
+    lean: center

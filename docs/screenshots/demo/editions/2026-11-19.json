@@ -1,0 +1,291 @@
+{
+  "schema": 2,
+  "lead": "northgate-reopens",
+  "motto": {
+    "kind": "quotation",
+    "text": "The best time to plant a tree was twenty years ago. The second best time is now.",
+    "source": "Proverb"
+  },
+  "sections": [
+    {
+      "key": "world",
+      "items": [
+        {
+          "id": "fishing-ledger",
+          "kind": "news",
+          "title": "Twelve coastal states agree to keep one shared ledger for fishing quotas",
+          "summary": "Negotiators settled on a single public record of catches after three years of talks, replacing a patchwork of national logbooks that rarely agreed. The ledger opens to inspectors in the spring and to the public a year later.",
+          "source": "Meridian Wire",
+          "byline": "Anneliese Marrow",
+          "sources": [
+            {
+              "outlet": "The Continental Review",
+              "url": "https://continental-review.example/2026/11/19/fishing-ledger-deal",
+              "byline": "Tobiah Rennick"
+            },
+            {
+              "outlet": "Sablewood Journal",
+              "url": "https://sablewood-journal.example/2026/11/19/what-the-quota-ledger-changes"
+            }
+          ],
+          "url": "https://meridian-wire.example/2026/11/19/coastal-states-shared-quota-ledger",
+          "minutes": 5
+        },
+        {
+          "id": "night-train-tunnel",
+          "kind": "news",
+          "title": "First night train runs through the new mountain rail tunnel after fourteen years of digging",
+          "summary": "The 57-kilometre bore cuts the overnight journey between the two capitals by almost three hours. Freight operators begin booking slots in January.",
+          "source": "The Continental Review",
+          "byline": "Tobiah Rennick",
+          "sources": [
+            {
+              "outlet": "Meridian Wire",
+              "url": "https://meridian-wire.example/2026/11/19/rail-tunnel-opens"
+            }
+          ],
+          "url": "https://continental-review.example/2026/11/19/first-night-train-mountain-tunnel",
+          "minutes": 6
+        },
+        {
+          "id": "monsoon-ends",
+          "kind": "brief",
+          "title": "Rains end early across the southern plateau, easing flood fears downstream",
+          "summary": "Forecasters said river levels should fall through the weekend, letting relief crews reopen two closed highways.",
+          "source": "Meridian Wire",
+          "url": "https://meridian-wire.example/2026/11/19/plateau-rains-end-early",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "economy",
+      "items": [
+        {
+          "id": "port-calder-volume",
+          "kind": "news",
+          "title": "Port Calder handles its busiest month in five years as holiday orders land",
+          "summary": "Container moves rose 14 percent from a year earlier, and the port authority says a second night shift will stay on through January. Trucking firms report waits of up to four hours at the north gate.",
+          "source": "Bellmark Business Daily",
+          "byline": "Ines Halvard",
+          "sources": [
+            {
+              "outlet": "Meridian Wire",
+              "url": "https://meridian-wire.example/2026/11/19/port-calder-volume"
+            },
+            {
+              "outlet": "Harborline Radio",
+              "url": "https://harborline-radio.example/2026/11/19/north-gate-truck-waits",
+              "byline": "Dario Quell"
+            }
+          ],
+          "url": "https://bellmark-business.example/2026/11/19/port-calder-busiest-month",
+          "minutes": 4,
+          "image_url": "https://images.evening-ledger.example/demo/harbor.jpg"
+        },
+        {
+          "id": "credit-union-fees",
+          "kind": "news",
+          "title": "Regional credit unions cut fees on small-business accounts",
+          "summary": "Four lenders in the valley dropped monthly charges on accounts under $50,000, a move analysts tie to competition from online banks.",
+          "source": "Bellmark Business Daily",
+          "byline": "Ines Halvard",
+          "url": "https://bellmark-business.example/2026/11/19/credit-unions-cut-business-fees",
+          "minutes": 3
+        },
+        {
+          "id": "utility-bill-guide",
+          "kind": "evergreen",
+          "title": "How to read your utility bill before winter rates arrive",
+          "summary": "A line-by-line guide to delivery charges, supply rates and the budget-billing option most households never switch on.",
+          "why": "Riverside Power's winter rates take effect on December 1.",
+          "source": "The Riverside Courier",
+          "url": "https://riverside-courier.example/2026/11/19/read-your-utility-bill",
+          "minutes": 7
+        }
+      ]
+    },
+    {
+      "key": "science",
+      "items": [
+        {
+          "id": "comet-brightening",
+          "kind": "news",
+          "title": "Hilltop observatory tracks a comet brightening faster than forecast",
+          "summary": "Astronomers say the comet could be visible with binoculars before dawn next week if it holds together. The observatory will open its dome to visitors on Saturday night.",
+          "source": "Lattice Science",
+          "byline": "Wren Halloway",
+          "sources": [
+            {
+              "outlet": "Harborline Radio",
+              "url": "https://harborline-radio.example/2026/11/19/observatory-open-night"
+            }
+          ],
+          "url": "https://lattice-science.example/2026/11/19/comet-brightening-faster",
+          "minutes": 5,
+          "image_url": "https://images.evening-ledger.example/demo/telescope.jpg"
+        },
+        {
+          "id": "cover-crops-moisture",
+          "kind": "news",
+          "title": "Cover crops held twice as much winter moisture, a ten-year soil study finds",
+          "summary": "Fields planted with rye and clover between harvests kept more water in the top metre of soil, with the largest gains in dry years.",
+          "why": "You follow the farm co-op's switch to cover crops.",
+          "source": "Lattice Science",
+          "byline": "Jonah Brightwater",
+          "url": "https://lattice-science.example/2026/11/19/cover-crops-soil-moisture",
+          "minutes": 6
+        },
+        {
+          "id": "waxwing-count",
+          "kind": "brief",
+          "title": "Volunteer bird count logs a record flock of waxwings along the river",
+          "summary": "Counters tallied more than 900 birds feeding on winter berries near the old mill race.",
+          "source": "Eastbank Gazette",
+          "url": "https://eastbank-gazette.example/2026/11/19/record-waxwing-count",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "key": "local",
+      "items": [
+        {
+          "id": "northgate-reopens",
+          "kind": "news",
+          "title": "Northgate Bridge reopens to walkers and cyclists three weeks ahead of schedule",
+          "summary": "The 1912 stone bridge reopened at dawn with a new deck, restored lamps and a widened path on the upstream side. Cars return in the spring once the approach roads are rebuilt, and the city will decide by then whether to keep one lane for bicycles.",
+          "why": "You asked to follow the Northgate Bridge repairs.",
+          "source": "The Riverside Courier",
+          "byline": "Maren Ashby",
+          "sources": [
+            {
+              "outlet": "Eastbank Gazette",
+              "url": "https://eastbank-gazette.example/2026/11/19/northgate-bridge-first-morning",
+              "byline": "Colm Fairweather"
+            },
+            {
+              "outlet": "Harborline Radio",
+              "url": "https://harborline-radio.example/2026/11/19/bridge-reopening-live"
+            }
+          ],
+          "url": "https://riverside-courier.example/2026/11/19/northgate-bridge-reopens",
+          "minutes": 6,
+          "image_url": "https://images.evening-ledger.example/demo/bridge.jpg"
+        },
+        {
+          "id": "library-sunday-hours",
+          "kind": "news",
+          "title": "Library board approves Sunday hours at the Eastbank branch",
+          "summary": "The branch will open from noon to five starting in January, paid for by moving two weekday evening hours.",
+          "source": "Eastbank Gazette",
+          "byline": "Colm Fairweather",
+          "url": "https://eastbank-gazette.example/2026/11/19/library-sunday-hours",
+          "minutes": 3
+        },
+        {
+          "id": "market-tram-depot",
+          "kind": "seasonal",
+          "title": "Saturday market moves indoors to the old tram depot for the winter",
+          "summary": "Thirty-two stalls make the move this weekend, with hot cider, a bread swap and the first winter squash.",
+          "source": "The Riverside Courier",
+          "byline": "Maren Ashby",
+          "url": "https://riverside-courier.example/2026/11/19/market-moves-to-tram-depot",
+          "minutes": 3,
+          "image_url": "https://images.evening-ledger.example/demo/market.jpg"
+        },
+        {
+          "id": "leaf-collection",
+          "kind": "brief",
+          "title": "Leaf collection reaches the north side next week",
+          "summary": "Rake leaves to the curb, not into the street, by 7 a.m. on your usual trash day.",
+          "source": "The Riverside Courier",
+          "url": "https://riverside-courier.example/2026/11/19/leaf-collection-north-side",
+          "minutes": 1
+        }
+      ]
+    },
+    {
+      "key": "opinion",
+      "items": [
+        {
+          "id": "bridge-car-free",
+          "kind": "opinion",
+          "title": "Keep the Northgate Bridge for people on foot",
+          "summary": "The reopened span has shown what the river crossing can be without traffic. The council should make the trial permanent.",
+          "source": "Quarterlight Magazine",
+          "byline": "Odile Fenwick",
+          "url": "https://quarterlight.example/2026/11/19/keep-northgate-car-free",
+          "minutes": 4,
+          "about": "northgate-reopens",
+          "stance": "The bridge should stay closed to cars."
+        },
+        {
+          "id": "benches-not-signs",
+          "kind": "opinion",
+          "title": "Downtown needs benches, not more wayfinding signs",
+          "summary": "Places to sit are what bring people back to a main street, and they cost less than the sign program the city is weighing.",
+          "source": "The Lantern Post",
+          "byline": "Halden Moss",
+          "url": "https://lantern-post.example/2026/11/19/benches-not-signs",
+          "minutes": 4,
+          "stance": "Small comforts do more for downtown than signs."
+        },
+        {
+          "id": "teach-budgeting",
+          "kind": "opinion",
+          "title": "Teach budgeting in middle school, before the first overdraft",
+          "summary": "A semester of household money basics would save more families than any fee cap.",
+          "source": "The Lantern Post",
+          "byline": "Ruth Ellingsworth",
+          "url": "https://lantern-post.example/2026/11/19/teach-budgeting-early",
+          "minutes": 3,
+          "stance": "Money basics belong in the middle-school timetable."
+        }
+      ]
+    }
+  ],
+  "boxes": {
+    "markets": {
+      "source": "Illustrative market snapshot",
+      "as_of": "2026-11-19T07:30:00-05:00",
+      "quotes": [
+        {
+          "symbol": "LDG",
+          "label": "Ledger 500",
+          "value": "5,812.40",
+          "change": "+0.6%",
+          "direction": "up"
+        },
+        {
+          "symbol": "RVC",
+          "label": "Riverside Composite",
+          "value": "1,204.17",
+          "change": "-0.2%",
+          "direction": "down"
+        },
+        {
+          "symbol": "10Y",
+          "label": "10-year note",
+          "value": "3.94%",
+          "change": "+0.03",
+          "direction": "up"
+        },
+        {
+          "symbol": "CRD",
+          "label": "Crude, barrel",
+          "value": "$71.18",
+          "change": "-1.1%",
+          "direction": "down"
+        },
+        {
+          "symbol": "GLD",
+          "label": "Gold, ounce",
+          "value": "$2,486",
+          "change": "0.0%",
+          "direction": "flat"
+        }
+      ]
+    }
+  }
+}

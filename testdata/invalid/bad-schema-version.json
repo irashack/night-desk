@@ -1,0 +1,20 @@
+{
+  "schema": 3,
+  "lead": "health-1",
+  "sections": [
+    {
+      "key": "health",
+      "items": [
+        {
+          "id": "health-1",
+          "kind": "evergreen",
+          "title": "A steadier morning walk",
+          "summary": "A short daily walk can be easier to sustain than an ambitious weekly workout.",
+          "source": "Night Desk sample desk",
+          "url": "https://example.com/health",
+          "minutes": 4
+        }
+      ]
+    }
+  ]
+}
