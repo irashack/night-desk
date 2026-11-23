@@ -41,7 +41,7 @@ or invalid selected file fails closed without disclosing its contents.
 The URL is the server base URL, not `/api/v1`; a deployment path prefix is allowed.
 HTTPS is required except for `http://localhost` or `http://127.0.0.1` development
 servers. TLS verification stays on; redirects are refused to protect the key.
-Requests have a 30-second timeout and responses are capped at 2 MiB. The plugin
+Requests have a 30-second timeout and responses are capped at 8 MiB. The plugin
 never logs credentials, returns request headers, or includes exception details.
 Even a server response reflecting the key is refused.
 
@@ -225,3 +225,8 @@ The HTTP tests require loopback sockets. In a sandbox that denies them, the
 non-network coverage can still run with `python3 -m unittest
 test_hermes.ClientUnitTests test_hermes.PromptTests test_hermes.RegistrationTests`;
 that subset does not replace the full HTTP tests.
+
+`test_conformance` runs the plugin against the scripted scenarios of
+`nightdesk conformance serve` and is skipped unless `NIGHTDESK_BIN` names a
+built binary: from the repository root, `go build -o /tmp/nightdesk ./cmd/nightdesk`,
+then `NIGHTDESK_BIN=/tmp/nightdesk python3 -m unittest test_conformance` here.

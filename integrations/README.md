@@ -19,7 +19,7 @@ Issue a paper-scoped agent key with the administrative `nightdesk key issue`
 command and store its output in a file readable only by the client. Choose the
 capabilities it needs: reads use `read`, editorial changes use `edit`, publishing
 uses `publish`, draft submissions use `draft`, review actions use `review`, and
-worker-only candidate ingestion uses `gather`. The server decides whether a
+worker-only candidate and gathering-report writes use `gather`. The server decides whether a
 request is permitted. Keep credentials out of command arguments, prompts and logs.
 Use HTTPS for a remote server.
 
@@ -111,9 +111,11 @@ Tools are `get_paper`, `edit_paper`, `paper_revisions`, `restore_paper`,
 `get_feedback`, `list_editions`, `get_edition`, `get_item`, `publish_edition`, `get_candidates`,
 `submit_draft`, `get_draft`, `list_drafts`, `review_draft`, `publish_draft`,
 `get_notes`, `set_notes`, `list_events` and `lean_outlets` (the outlets in the
-operator's own ratings file; Night Desk ships no ratings). Worker-only candidate ingestion (`POST
-/api/v1/candidates`) and draft leases (`POST /api/v1/runs/{date}/claim|report`)
-are HTTP-only. `get_candidates` pages: pass `next_cursor` back as `cursor`.
+operator's own ratings file; Night Desk ships no ratings). The worker endpoints
+are HTTP-only: candidate ingestion (`POST /api/v1/candidates`), gathering reports
+(`POST /api/v1/gather/dropped|health`), found sources
+(`POST /api/v1/sections/{key}/sources`) and draft leases
+(`POST /api/v1/runs/{date}/claim|report`). `get_candidates` pages: pass `next_cursor` back as `cursor`.
 
 Path and query parameters are top-level tool arguments. Write tools take their
 HTTP JSON payload under `body`, for example:
