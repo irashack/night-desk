@@ -150,10 +150,15 @@ reused email address cannot move anyone into another paper. Sign-in uses the
 authorization code flow with PKCE, state and nonce through `coreos/go-oidc`.
 Sessions are random IDs in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie, stored
 server-side and revocable; signing out ends the session, clears the offline copy
-and removes that session's push subscriptions.
+and removes that session's push subscriptions. A paper may also admit a provider
+group: the ID token's `groups` claim is kept with the session and counts for
+`group_session_lifetime` (default 24 hours) from sign-in, so a session reads its own
+paper plus each group paper, each under its own URL; only subject readers edit
+sections.
 
 **Tenant isolation is in the data layer.** Reader queries take the paper from the
-session, never from the URL or request body. The administrator role has no reader
+session, never from the request body; a `/p/{paper}` URL only chooses among the
+papers the session already reads. The administrator role has no reader
 access, and the operator page uses its own hashed key and shows counts, never
 reader identities or edition text.
 
@@ -221,7 +226,8 @@ Optional editorial fields let one pipeline serve any paper: a paper `brief` (at 
 2000 characters), a `brief` per section (at most 600) and motto guidance. Guidance is
 trimmed plain text without HTML or Markdown links. `deadline` is an `HH:MM` local
 time and `draft_lead` (default 90 minutes) is the window before it in which the
-worker may draft. Each reader supplies a `subject` or an absolute `subject_file`,
+worker may draft. Each reader supplies a `subject`, an absolute `subject_file` or a
+provider `group`,
 so secret stores need not template YAML. An invalid reload keeps the previous
 snapshot.
 

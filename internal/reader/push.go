@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/irashack/night-desk/internal/push"
@@ -74,9 +75,28 @@ func (s *Server) pushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Store.RemovePushSubscription(r.Context(), current(r).scope, sub.Endpoint); err != nil {
+	remaining, err := s.Store.RemovePushSubscription(r.Context(), current(r).scope, sub.Endpoint)
+	if err != nil {
 		http.Error(w, "Notifications unavailable", 500)
 		return
 	}
+	// The browser keeps one subscription for every paper; it may drop it only
+	// when no other paper still notifies through it.
+	w.Header().Set("X-Push-Remaining", strconv.Itoa(remaining))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// pushStatus tells the toggle whether this device notifies for this paper.
+func (s *Server) pushStatus(w http.ResponseWriter, r *http.Request) {
+	sub, ok := s.pushForm(w, r)
+	if !ok {
+		return
+	}
+	on, err := s.Store.HasPushSubscription(r.Context(), current(r).scope, sub.Endpoint)
+	if err != nil {
+		http.Error(w, "Notifications unavailable", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"on": on})
 }

@@ -37,6 +37,10 @@ type Server struct {
 	DataDir         string   `json:"data_dir"`
 	OIDC            OIDC     `json:"oidc"`
 	SessionLifetime string   `json:"session_lifetime"`
+	// GroupSessionLifetime bounds how long group membership read from the ID
+	// token at sign-in grants a paper: a member removed from the group loses
+	// that paper by then, whatever the session lifetime.
+	GroupSessionLifetime string `json:"group_session_lifetime"`
 }
 type OIDC struct {
 	Issuer           string   `json:"issuer"`
@@ -91,7 +95,62 @@ type Reader struct {
 	Issuer      string `json:"issuer"`
 	Subject     string `json:"subject,omitempty"`
 	SubjectFile string `json:"subject_file,omitempty"`
-	subject     string
+	// Group admits every account whose ID token, at sign-in, lists this name in
+	// its groups claim.
+	Group   string `json:"group,omitempty"`
+	subject string
+}
+
+// GroupsScope is the scope that asks the provider for the groups claim.
+const GroupsScope = "groups"
+
+// HasGroupReaders reports whether any paper admits readers by group.
+func (c *Config) HasGroupReaders() bool {
+	for _, p := range c.Papers {
+		for _, r := range p.Readers {
+			if r.Group != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SignInScopes are the scopes sign-in asks for: the configured ones, plus
+// groups when a paper has a group reader.
+func (c *Config) SignInScopes() []string {
+	scopes := append([]string{}, c.Server.OIDC.Scopes...)
+	if len(scopes) == 0 {
+		scopes = []string{"openid"}
+	}
+	if c.HasGroupReaders() {
+		for _, s := range scopes {
+			if s == GroupsScope {
+				return scopes
+			}
+		}
+		scopes = append(scopes, GroupsScope)
+	}
+	return scopes
+}
+
+// WantsGroups reports whether sign-in should keep the groups claim.
+func (c *Config) WantsGroups() bool {
+	for _, s := range c.SignInScopes() {
+		if s == GroupsScope {
+			return true
+		}
+	}
+	return false
+}
+
+// GroupLifetime is how long sign-in's group membership grants papers.
+func (c *Config) GroupLifetime() time.Duration {
+	d, err := time.ParseDuration(c.Server.GroupSessionLifetime)
+	if err != nil || d <= 0 {
+		return 24 * time.Hour
+	}
+	return d
 }
 
 func (r Reader) ResolvedSubject() string {
@@ -116,6 +175,8 @@ func (p Paper) Rules() edition.PaperRules {
 	}
 	return r
 }
+
+const readerRule = "exactly one of subject, subject_file and group is required"
 
 var slug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 var htmlTag = regexp.MustCompile(`<[/!?]?[a-zA-Z]`)
@@ -151,6 +212,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Server.SessionLifetime == "" {
 		c.Server.SessionLifetime = "720h"
+	}
+	if c.Server.GroupSessionLifetime == "" {
+		c.Server.GroupSessionLifetime = "24h"
 	}
 	if c.Server.OIDC.Scopes == nil {
 		c.Server.OIDC.Scopes = []string{"openid"}
@@ -197,10 +261,14 @@ func configShape(v any, t reflect.Type, path string) error {
 			return bad("an object")
 		}
 		if t == reflect.TypeFor[Reader]() {
-			_, subject := obj["subject"]
-			_, file := obj["subject_file"]
-			if subject == file {
-				return fmt.Errorf("%s.subject_file: exactly one of subject and subject_file is required", path)
+			n := 0
+			for _, k := range []string{"subject", "subject_file", "group"} {
+				if _, ok := obj[k]; ok {
+					n++
+				}
+			}
+			if n != 1 {
+				return fmt.Errorf("%s.subject_file: %s", path, readerRule)
 			}
 		}
 		fields := map[string]reflect.Type{}
@@ -314,6 +382,9 @@ func (c *Config) Validate() error {
 	if e != nil || d <= 0 {
 		add("server.session_lifetime", "must be a positive duration")
 	}
+	if d, e := time.ParseDuration(c.Server.GroupSessionLifetime); c.Server.GroupSessionLifetime != "" && (e != nil || d <= 0) {
+		add("server.group_session_lifetime", "must be a positive duration")
+	}
 	if len(c.Papers) == 0 {
 		add("papers", "must contain at least one paper")
 	}
@@ -370,11 +441,30 @@ func (c *Config) Validate() error {
 			}
 		}
 		readers := map[[2]string]bool{}
+		groups := map[[2]string]bool{}
 		for j, r := range p.Readers {
 			path := fmt.Sprintf("%sreaders[%d].", b, j)
 			issuer(path+"issuer", r.Issuer)
-			if (r.Subject == "") == (r.SubjectFile == "") {
-				add(path+"subject_file", "exactly one of subject and subject_file is required")
+			set := 0
+			for _, v := range []string{r.Subject, r.SubjectFile, r.Group} {
+				if v != "" {
+					set++
+				}
+			}
+			if set != 1 {
+				add(path+"subject_file", readerRule)
+				continue
+			}
+			if r.Group != "" {
+				text(path+"group", r.Group)
+				if len(r.Group) > 256 {
+					add(path+"group", "must be at most 256 bytes")
+				}
+				identity := [2]string{r.Issuer, r.Group}
+				if groups[identity] {
+					add(strings.TrimSuffix(path, "."), "duplicate issuer/group pair")
+				}
+				groups[identity] = true
 				continue
 			}
 			subject := r.Subject
