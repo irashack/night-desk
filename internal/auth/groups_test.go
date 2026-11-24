@@ -38,7 +38,7 @@ func TestReaderForms(t *testing.T) {
 	now := time.Now()
 	token := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("g", 32)))
 	session := func(subject string, groups ...string) readerLookup {
-		return readerLookup{Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example", Subject: subject, Groups: groups, Created: now, Expires: now.Add(720 * time.Hour)}}
+		return readerLookup{Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example", Subject: subject, Groups: groups, GroupsChecked: true, Created: now, Expires: now.Add(720 * time.Hour)}}
 	}
 	for _, tc := range []struct {
 		name, subject string
@@ -81,7 +81,7 @@ func TestGroupMembershipExpires(t *testing.T) {
 	cfg := groupConfig()
 	signedIn := time.Now()
 	token := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("h", 32)))
-	lookup := readerLookup{Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example", Subject: "reader-one", Groups: []string{"family"}, Created: signedIn, Expires: signedIn.Add(720 * time.Hour)}}
+	lookup := readerLookup{Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example", Subject: "reader-one", Groups: []string{"family"}, GroupsChecked: true, Created: signedIn, Expires: signedIn.Add(720 * time.Hour)}}
 	later := signedIn.Add(24 * time.Hour)
 	// A subject reader keeps their own paper and loses the group paper.
 	scope, err := AuthenticateReader(context.Background(), lookup, cfg, token, later, time.Hour)
@@ -120,5 +120,46 @@ func TestGroupMembershipExpires(t *testing.T) {
 	cfg.Papers[2].Readers = cfg.Papers[2].Readers[1:]
 	if _, err = AuthenticateReader(context.Background(), lookup, cfg, token, signedIn, time.Hour); err != ErrUnmapped {
 		t.Fatal("group reader removed from config still reads", err)
+	}
+}
+
+// A session from before group readers (or from a configuration without them)
+// never asked for groups: a group paper asks it to sign in again, while a
+// session whose recorded groups lack the paper keeps the 404.
+func TestUncheckedGroupsAskForSignIn(t *testing.T) {
+	cfg := groupConfig()
+	now := time.Now()
+	token := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("u", 32)))
+	lookup := readerLookup{Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example", Subject: "reader-one", Created: now, Expires: now.Add(720 * time.Hour)}}
+	scope, err := AuthenticateReader(context.Background(), lookup, cfg, token, now, time.Hour)
+	if err != nil || papers(scope) != "own*" || len(scope.Refresh()) != 0 {
+		t.Fatal("unchecked subject session", papers(scope), scope.Refresh(), err)
+	}
+	if !scope.NeedsSignIn("shared") || !scope.NeedsSignIn("friends") || scope.NeedsSignIn("second") || scope.NeedsSignIn("own") || scope.NeedsSignIn("missing") {
+		t.Fatal("unchecked session: wrong papers ask for sign-in")
+	}
+	// Another issuer's group papers are not this session's to ask about.
+	lookup.session.Issuer = "https://other.example"
+	lookup.session.Subject = "reader-one"
+	cfg.Papers[0].Readers = append(cfg.Papers[0].Readers, config.Reader{Issuer: "https://other.example", Subject: "reader-one"})
+	if scope, err = AuthenticateReader(context.Background(), lookup, cfg, token, now, time.Hour); err != nil || !scope.NeedsSignIn("friends") || scope.NeedsSignIn("shared") {
+		t.Fatal("other issuer", err)
+	}
+	// Checked, current groups without the paper: a plain 404 stays.
+	lookup.session.Issuer = "https://id.example"
+	lookup.session.GroupsChecked = true
+	lookup.session.Groups = []string{"family"}
+	if scope, err = AuthenticateReader(context.Background(), lookup, cfg, token, now, time.Hour); err != nil || papers(scope) != "own*,shared" || scope.NeedsSignIn("friends") {
+		t.Fatal("checked session asks for sign-in", papers(scope), err)
+	}
+	// Stale: every group paper of the issuer may ask, the ones it read show in the switcher.
+	if scope, err = AuthenticateReader(context.Background(), lookup, cfg, token, now.Add(25*time.Hour), time.Hour); err != nil || !scope.NeedsSignIn("friends") || !scope.NeedsSignIn("shared") || strings.Join(scope.Refresh(), ",") != "shared" {
+		t.Fatal("stale session", scope.Refresh(), err)
+	}
+	// Without group readers in the configuration nothing changes.
+	plain := &config.Config{Papers: cfg.Papers[:2]}
+	lookup.session.GroupsChecked = false
+	if scope, err = AuthenticateReader(context.Background(), lookup, plain, token, now, time.Hour); err != nil || scope.NeedsSignIn("shared") {
+		t.Fatal("no group readers", err)
 	}
 }

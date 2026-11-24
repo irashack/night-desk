@@ -31,7 +31,7 @@ func (d *desk) signIn(t *testing.T, subject, seed string, groups ...string) stri
 	raw := sha256.Sum256([]byte(subject + "\x00" + seed))
 	token := base64.RawURLEncoding.EncodeToString(raw[:])
 	now := time.Now()
-	if err := d.db.InsertSession(context.Background(), auth.Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example.com", Subject: subject, CSRF: "c", Created: now, LastSeen: now, Expires: now.Add(time.Hour), Groups: groups}); err != nil {
+	if err := d.db.InsertSession(context.Background(), auth.Session{Hash: sha256.Sum256([]byte(token)), Issuer: "https://id.example.com", Subject: subject, CSRF: "c", Created: now, LastSeen: now, Expires: now.Add(time.Hour), Groups: groups, GroupsChecked: true}); err != nil {
 		t.Fatal(err)
 	}
 	return token

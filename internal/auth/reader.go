@@ -18,6 +18,9 @@ type Session struct {
 	// Groups is the ID token's groups claim at sign-in (empty when no paper
 	// admits readers by group).
 	Groups []string
+	// GroupsChecked records that sign-in asked for the groups claim, so Groups
+	// is the reader's membership (possibly none) rather than unknown.
+	GroupsChecked bool
 }
 type SessionLookup interface {
 	Session(context.Context, [32]byte) (Session, error)
@@ -38,6 +41,7 @@ type ReaderScope struct {
 	papers  []Access
 	subject bool
 	refresh []string
+	unknown []string
 }
 
 func (s ReaderScope) PaperScope() PaperScope { return s.paper }
@@ -57,6 +61,28 @@ func (s ReaderScope) CanEdit() bool { return s.subject && s.Default() }
 // Refresh lists group papers the session read until its group membership
 // went stale; signing in again restores them if the reader is still a member.
 func (s ReaderScope) Refresh() []string { return slices.Clone(s.refresh) }
+
+// NeedsSignIn reports whether signing in again could let the session read
+// paper: its group membership is stale or was never recorded, and a group of
+// its issuer reads the paper. A session whose current groups simply do not
+// include the paper gets false.
+func (s ReaderScope) NeedsSignIn(paper string) bool {
+	return slices.Contains(s.refresh, paper) || slices.Contains(s.unknown, paper)
+}
+
+// groupPapers lists the papers some group reader of issuer can read.
+func groupPapers(cfg *config.Config, issuer string) []string {
+	var out []string
+	for _, paper := range cfg.Papers {
+		for _, reader := range paper.Readers {
+			if reader.Group != "" && reader.Issuer == issuer {
+				out = append(out, paper.ID)
+				break
+			}
+		}
+	}
+	return out
+}
 
 // Default reports whether the selected paper is the session's first paper,
 // the one served at /.
@@ -119,9 +145,10 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 		return ReaderScope{}, ErrUnauthorized
 	}
 	// Group membership holds as of sign-in, and only for the group lifetime.
-	stale := cfg.HasGroupReaders() && !session.Created.Add(cfg.GroupLifetime()).After(now)
+	// A sign-in that never asked for groups knows no membership at all.
+	stale := cfg.HasGroupReaders() && (!session.GroupsChecked || !session.Created.Add(cfg.GroupLifetime()).After(now))
 	var papers []Access
-	var refresh []string
+	var refresh, unknown []string
 	if stale {
 		papers = Readable(cfg, session.Issuer, session.Subject, nil)
 		if len(papers) == 0 {
@@ -134,13 +161,18 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 				refresh = append(refresh, a.Paper)
 			}
 		}
+		for _, id := range groupPapers(cfg, session.Issuer) {
+			if !slices.ContainsFunc(papers, func(a Access) bool { return a.Paper == id }) && !slices.Contains(refresh, id) {
+				unknown = append(unknown, id)
+			}
+		}
 	} else {
 		papers = Readable(cfg, session.Issuer, session.Subject, session.Groups)
 	}
 	if err = lookup.SlideSession(ctx, session.Hash, now, now.Add(lifetime)); err != nil {
 		return ReaderScope{}, err
 	}
-	scope := ReaderScope{session: session, papers: papers, refresh: refresh}
+	scope := ReaderScope{session: session, papers: papers, refresh: refresh, unknown: unknown}
 	if len(papers) == 0 {
 		return scope, ErrUnmapped
 	}

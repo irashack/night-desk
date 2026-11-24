@@ -35,8 +35,8 @@ import (
 const CSP = "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
 type transaction struct {
-	state, nonce, verifier string
-	expires                time.Time
+	state, nonce, verifier, next string
+	expires                      time.Time
 }
 type Server struct {
 	Store     *store.Store
@@ -158,7 +158,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if old, err := r.Cookie("nd_login"); err == nil {
 		delete(s.pending, sha256.Sum256([]byte(old.Value)))
 	}
-	s.pending[sha256.Sum256([]byte(key))] = transaction{state, nonce, verifier, now.Add(10 * time.Minute)}
+	s.pending[sha256.Sum256([]byte(key))] = transaction{state, nonce, verifier, returnPath(r.URL.Query().Get("next")), now.Add(10 * time.Minute)}
 	s.mu.Unlock()
 	s.cookie(w, "nd_login", key, 600)
 	oauth := s.oauth
@@ -199,14 +199,15 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var groups []string
-	if s.Config().WantsGroups() {
+	checked := s.Config().WantsGroups()
+	if checked {
 		// A claim that cannot be read grants no group, but never blocks a
 		// reader whose access does not depend on it.
 		groups, _ = groupsClaim(id)
 	}
 	key := random()
 	now := s.now()
-	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: id.Issuer, Subject: id.Subject, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime()), Groups: groups}
+	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: id.Issuer, Subject: id.Subject, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime()), Groups: groups, GroupsChecked: checked}
 	if err = s.Store.InsertSession(r.Context(), session); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
@@ -215,8 +216,27 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		_ = s.Store.DeleteSession(r.Context(), sha256.Sum256([]byte(old.Value)))
 	}
 	s.cookie(w, "nd_session", key, int(s.lifetime().Seconds()))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	next := "/"
+	if tx.next != "" {
+		next = tx.next
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
 }
+
+// returnPath accepts where sign-in should land afterwards: only a paper page
+// on this site (/p/{paper}/...), never another origin.
+func returnPath(next string) string {
+	if len(next) > 512 || !strings.HasPrefix(next, "/p/") || strings.ContainsAny(next, "\\\x00\r\n") {
+		return ""
+	}
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !paperPath.MatchString(u.Path) || strings.Contains(u.Path, "..") {
+		return ""
+	}
+	return u.RequestURI()
+}
+
+var paperPath = regexp.MustCompile(`^/p/[a-z0-9][a-z0-9-]{0,63}/[A-Za-z0-9/._-]*$`)
 
 // groupsClaim reads the ID token's groups claim: an array of group names (a
 // lone string is taken as one group, a missing claim as none). Malformed or
@@ -298,10 +318,11 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 		base := ""
 		if id := r.PathValue("paper"); id != "" {
 			selected, ok := scope.For(id)
-			if !ok && slices.Contains(scope.Refresh(), id) {
-				// Membership as of sign-in has run out: sign in again to
-				// refresh it. The session keeps reading its own paper.
-				unauthorized(w, r)
+			if !ok && scope.NeedsSignIn(id) {
+				// Membership as of sign-in has run out, or was never asked
+				// for: sign in again to refresh it, then come back here. The
+				// session keeps reading its own paper.
+				signInAgain(w, r)
 				return
 			}
 			if !ok {
@@ -325,6 +346,18 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 		paper, _ := cfg.Paper(scope.PaperScope().PaperID())
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal{scope, paper, base})))
 	})
+}
+
+// signInAgain is the sign-in page with a way back to the paper page asked for.
+func signInAgain(w http.ResponseWriter, r *http.Request) {
+	page := signIn
+	if next := returnPath(r.URL.RequestURI()); next != "" {
+		page = strings.Replace(page, `<a href="/login">`, `<a href="/login?next=`+template.HTMLEscapeString(url.QueryEscape(next))+`">`, 1)
+		page = strings.Replace(page, `Your paper, set overnight.`, `Sign in again to read this paper.`, 1)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(page))
 }
 func unauthorized(w http.ResponseWriter, r *http.Request) {
 	// Do not redirect a navigation through the provider: a failed cross-origin

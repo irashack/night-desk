@@ -123,7 +123,7 @@ func TestSubjectReaderWithGroupPaper(t *testing.T) {
 	// Past the group lifetime the own paper stays; the shared paper asks for
 	// a fresh sign-in, which restores it while the reader is still a member.
 	f.s.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
-	if r = f.get(t, "/p/c/"); r.StatusCode != 401 || !strings.Contains(body(t, r), `href="/login"`) {
+	if r = f.get(t, "/p/c/"); r.StatusCode != 401 || !strings.Contains(body(t, r), `href="/login?next=%2Fp%2Fc%2F"`) {
 		t.Fatal("stale group paper does not ask for sign-in", r.StatusCode)
 	}
 	if r = f.get(t, "/p/c/archive"); r.StatusCode != 401 {
@@ -240,5 +240,81 @@ func TestPushPerPaper(t *testing.T) {
 	}
 	if code := f.pushPost(t, "/p/b/push/subscribe", session.CSRF, sub); code != 404 {
 		t.Fatal("subscribed to an unread paper", code)
+	}
+}
+
+// A session from before group readers asks for the shared paper: sign in
+// again and land back on it. Unrelated papers keep their 404.
+func TestPreGroupSessionSignsInAgain(t *testing.T) {
+	f := setup(t)
+	f.publish(t, f.a, "2026-11-20", sampleEdition(), nil)
+	r := f.signIn(t, "") // no group readers yet: the sign-in never asks for groups
+	r.Body.Close()
+	if s, _ := f.session(t); s.GroupsChecked {
+		t.Fatal("groups marked checked without group readers")
+	}
+	f.withShared(t)
+	f.p.groups = []string{"family"}
+	r = f.get(t, "/p/c/e/2026-11-20?x=1")
+	html := body(t, r)
+	if r.StatusCode != 401 || !strings.Contains(html, `href="/login?next=%2Fp%2Fc%2Fe%2F2026-11-20%3Fx%3D1"`) || !strings.Contains(html, "Sign in again to read this paper.") {
+		t.Fatal("pre-group session not asked to sign in", r.StatusCode)
+	}
+	for _, path := range []string{"/p/b/", "/p/missing/"} {
+		if r = f.get(t, path); r.StatusCode != 404 {
+			t.Fatalf("%s: %d", path, r.StatusCode)
+		}
+		r.Body.Close()
+	}
+	if html = body(t, f.get(t, "/")); !strings.Contains(html, "The A Gazette") || strings.Contains(html, "/p/c/") {
+		t.Fatal("own paper changed, or the unknown paper offered in the switcher")
+	}
+	// Signing in from that page lands back on the paper page asked for.
+	r = f.get(t, "/login?next=%2Fp%2Fc%2Fe%2F2026-11-20")
+	dest := r.Header.Get("Location")
+	r.Body.Close()
+	r, _ = f.client.Get(dest)
+	callback := r.Header.Get("Location")
+	r.Body.Close()
+	r, _ = f.client.Get(callback)
+	r.Body.Close()
+	if r.StatusCode != 303 || r.Header.Get("Location") != "/p/c/e/2026-11-20" {
+		t.Fatal("sign-in did not return to the paper", r.StatusCode, r.Header.Get("Location"))
+	}
+	if s, _ := f.session(t); !s.GroupsChecked || !slices.Equal(s.Groups, []string{"family"}) {
+		t.Fatal("new session groups", s.Groups, s.GroupsChecked)
+	}
+	if r = f.get(t, "/p/c/"); r.StatusCode != 200 {
+		t.Fatal("shared paper after signing in again", r.StatusCode)
+	}
+	r.Body.Close()
+	// Signed in with current groups that lack the paper: a plain 404.
+	f.p.groups = []string{"chess"}
+	r = f.signIn(t, "")
+	r.Body.Close()
+	if r = f.get(t, "/p/c/"); r.StatusCode != 404 {
+		t.Fatal("non-member asked to sign in again", r.StatusCode)
+	}
+	r.Body.Close()
+}
+
+func TestReturnPath(t *testing.T) {
+	for in, want := range map[string]string{
+		"/p/c/":                    "/p/c/",
+		"/p/c/e/2026-11-20?x=1":    "/p/c/e/2026-11-20?x=1",
+		"/p/arcadia-daily/archive": "/p/arcadia-daily/archive",
+		"/":                        "",
+		"/sections":                "",
+		"//evil.example/p/c/":      "",
+		"https://evil.example/p/":  "",
+		"/p/c":                     "",
+		"/p/../sections":           "",
+		"/p/c/../../sections":      "",
+		"/p/c/\\evil":              "",
+		"/p/C/":                    "",
+	} {
+		if got := returnPath(in); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
 	}
 }

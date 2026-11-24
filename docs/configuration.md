@@ -162,6 +162,11 @@ issuer/group pairs on one paper are rejected.
   the configuration takes effect at once. A groups claim that is not a list of
   names (at most 512, each at most 256 bytes) grants no group and does not block
   sign-in.
+- A session that signed in before any paper had a group reader (or before
+  v0.2.0) has no recorded groups. Like a session whose membership has run out, it
+  gets the sign-in page, not a 404, for any paper a group of its issuer reads, and
+  signing in returns it to that page. A 404 stays for papers the session's current
+  groups don't include.
 - Notifications are per paper. Each sign-in refreshes the groups that reader's
   push subscriptions carry, and each push rechecks that the reader still reads the
   paper, by subject or by those groups. A removed member who never signs in again
