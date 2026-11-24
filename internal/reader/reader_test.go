@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/irashack/night-desk/internal/auth"
+	"github.com/irashack/night-desk/internal/candidate"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/edition"
 	"github.com/irashack/night-desk/internal/keys"
@@ -558,6 +559,17 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 		ed.Sections = append(ed.Sections, sec)
 	}
 	ed.Lead = "item-0-0"
+	// Every story has text, so each carries its reading-view link.
+	var snaps []candidate.Candidate
+	for _, sec := range ed.Sections {
+		for i := range sec.Items {
+			sec.Items[i].URL = "https://example.test/" + sec.Items[i].ID
+			snaps = append(snaps, candidate.Candidate{Section: sec.Key, CanonicalURL: sec.Items[i].URL, Outlet: "Wire", Title: "Story", FetchedAt: time.Now().UTC(), Text: "Text.", State: "ok"})
+		}
+	}
+	if err := f.db.UpsertCandidates(t.Context(), f.a, snaps); err != nil {
+		t.Fatal(err)
+	}
 	start, _ := time.Parse("2006-01-02", "2026-08-01")
 	for i := 0; i < 65; i++ {
 		f.publish(t, f.a, start.AddDate(0, 0, i).Format("2006-01-02"), ed, nil)
@@ -589,8 +601,10 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	// Raised from 150 KB for the Sections editor, opinion beside its story,
 	// since-published lines and the push toggle; the four fonts are most of it.
 	// Raised to 162 KB for the paper switcher and per-paper push status.
-	if total >= 162000 {
-		t.Fatalf("first load exceeds 162 KB: %d", total)
+	// Raised to 166 KB for each story's reading-view link; the reading view's
+	// own CSS and script load only on its page.
+	if total >= 166000 {
+		t.Fatalf("first load exceeds 166 KB: %d", total)
 	}
 }
 

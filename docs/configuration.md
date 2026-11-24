@@ -290,7 +290,16 @@ desktop-width window the bar runs across the top beside Today and Archive, and t
 paper widens: the front page sets the lead beside the section index and sections
 set their stories in columns. A past edition's news lists up to three later articles
 on the same story under "Since published", from candidates the gathering worker
-stored after that date; without a worker there are none. Without JavaScript the complete edition remains
+stored after that date; without a worker there are none. A story whose page the
+gathering worker stored text for has "Read here" beside its outlet link: it opens
+the reading view (`/read/<date>/<item>`), the stored text set in the paper's type
+with a sticky "Back to the paper" bar that returns to the story's page and an
+"Open at <outlet>" link. Text that looks shorter than the piece (a paywall or a
+page that needs script) carries a note saying so. A− and A+ set the text size,
+and the place in each story is kept, per device, in the browser's local storage,
+which signing out clears. Stories without stored text keep only the outlet link,
+and the view says it has no copy; the server never fetches a page for it. Stored
+text lasts as long as the paper's `retention_days`. Without JavaScript the complete edition remains
 readable as a list. Sections (`/sections`) lets a paper's readers add, rename,
 reorder and remove its sections and edit their one-line briefs, each change saved as
 an editorial revision like an agent's `PATCH /api/v1/paper`; new sections find their

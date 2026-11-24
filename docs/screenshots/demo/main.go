@@ -116,6 +116,9 @@ func run(addr string, keep bool) error {
 	if err = publishAll(ctx, db, base); err != nil {
 		return err
 	}
+	if err = storeSnapshots(ctx, db); err != nil {
+		return err
+	}
 	fmt.Println("Night Desk demo reader: " + base + "/login")
 	select {
 	case err = <-serving:

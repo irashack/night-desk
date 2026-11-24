@@ -116,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /logout", s.protect(http.HandlerFunc(s.logout), true))
 	mux.Handle("GET /{$}", s.protect(http.HandlerFunc(s.edition), false))
 	mux.Handle("GET /e/{date}", s.protect(http.HandlerFunc(s.edition), false))
+	mux.Handle("GET /read/{date}/{item}", s.protect(http.HandlerFunc(s.story), false))
 	mux.Handle("GET /search", s.protect(http.HandlerFunc(s.search), false))
 	mux.Handle("GET /archive", s.protect(http.HandlerFunc(s.archive), false))
 	mux.Handle("GET /sections", s.protect(http.HandlerFunc(s.sections), false))
@@ -129,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	// Sections stay at /sections: only a subject reader's own paper is editable.
 	mux.Handle("GET /p/{paper}/{$}", s.protect(http.HandlerFunc(s.edition), false))
 	mux.Handle("GET /p/{paper}/e/{date}", s.protect(http.HandlerFunc(s.edition), false))
+	mux.Handle("GET /p/{paper}/read/{date}/{item}", s.protect(http.HandlerFunc(s.story), false))
 	mux.Handle("GET /p/{paper}/search", s.protect(http.HandlerFunc(s.search), false))
 	mux.Handle("GET /p/{paper}/archive", s.protect(http.HandlerFunc(s.archive), false))
 	mux.Handle("POST /p/{paper}/feedback", s.protect(http.HandlerFunc(s.feedback), false))

@@ -49,6 +49,9 @@
       p.setAttribute('aria-hidden', String(p.inert));
       p.classList.toggle('is-current', i === cur);
       bars[i].hidden = i !== cur;
+      // The scrolling layouts name themselves where Pages shows the page.
+      const where = bars[i].querySelector('.where-page');
+      if (where) { where.dataset.page ??= where.textContent; where.textContent = layout === 'pages' ? where.dataset.page : (layout === 'list' ? 'List' : 'Reader') + ' · ' + where.dataset.page.replace('⌂ ', ''); }
     });
   };
   // In the scrolling layouts the bar follows the page being read.

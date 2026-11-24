@@ -14,6 +14,7 @@ Every headline, outlet, byline and link is invented; the links use the reserved
 | `desktop-search.png` | Archive search for "bridge" across four editions |
 | `phone-front-dark.png` | Front page on an iPhone 15, dark |
 | `phone-article.png` | A story with byline, other coverage and an opinion column, iPhone 15 |
+| `phone-story.png` | The reading view of that story, from the demo's stored copy, Sepia, iPhone 15 |
 
 ## Run the demo reader
 
