@@ -22,6 +22,7 @@ server:
   public_base_url: https://paper.example
   data_dir: data
   session_lifetime: 720h
+  group_session_lifetime: 24h   # how long sign-in's group membership counts
   oidc:
     issuer: https://identity.example
     client_id: nightdesk
@@ -52,6 +53,8 @@ papers:
       - issuer: https://identity.example
         subject_file: /run/secrets/reader-subject
         # Or instead of subject_file: subject: stable-reader-subject
+      - issuer: https://identity.example
+        group: household          # everyone in this provider group reads it
 ```
 
 ```sh
@@ -127,12 +130,40 @@ the ratings format and `nightdesk ratings import` but no ratings: use a ratings
 source you are licensed to use and keep its attribution (AllSides, for example,
 only under [its own terms](https://www.allsides.com/media-bias/media-bias-ratings)).
 
-Each reader must provide exactly one of `subject` and `subject_file`. A subject file
+Each reader must provide exactly one of `subject`, `subject_file` and `group`. A subject file
 must use an absolute path and contain a non-empty subject after trimming whitespace.
 It is read at load/reload; missing, unreadable or invalid files reject the whole
 snapshot, and duplicate detection uses the resolved issuer/subject pair. File
 contents and reader configuration are never served by the agent API. After rotating
 only a subject file, send SIGHUP to reload it (the periodic watch tracks YAML mtime).
+
+### Group readers
+
+A `group` reader admits every identity from that issuer whose ID token lists the
+group in its `groups` claim, an array of group names (Pocket ID, Authentik and
+Keycloak, with a groups mapper, send one). When any paper has a group reader,
+sign-in also asks for the `groups` scope, or you can list `groups` in
+`server.oidc.scopes` yourself. The claim is stored with the session; duplicate
+issuer/group pairs on one paper are rejected.
+
+- A session reads its subject paper first (the first paper naming its subject,
+  served at `/`), then every paper one of its groups reads, in configuration
+  order. A reader with only group papers gets the first one at `/`. The others
+  are at `/p/{paper}/` (with `/p/{paper}/e/{date}`, `/archive`, `/search`), and the
+  menu bar shows a switcher between them.
+- Group readers read, search, give feedback and turn on notifications. Editing
+  sections (`/sections`) stays with the subject reader of their own paper.
+- Membership is as of sign-in. It counts for `server.group_session_lifetime`
+  (default `24h`) from sign-in, whatever `session_lifetime` is; after that, a
+  subject reader keeps their own paper and a group-only reader is asked to sign in
+  again. So someone removed from the group in the provider loses the paper within
+  that time. Removing the `group` reader from the configuration takes effect at once.
+- Notifications are per paper. Each sign-in refreshes the groups that reader's
+  push subscriptions carry, and each push rechecks that the reader still reads the
+  paper, by subject or by those groups. A removed member who never signs in again
+  keeps getting the empty "paper is ready" push until the group reader is removed
+  from the configuration or the device unsubscribes; opening it asks for sign-in.
+- The agent API is unchanged: a shared paper has its own agent key like any other.
 
 Health checks use `GET /healthz`. SIGTERM allows ten seconds for requests to
 finish. Backups require a fresh destination outside the data directory and include
@@ -233,7 +264,8 @@ rejected in v1 editions.
 ## Reader
 
 Visit `/` and follow the sign-in link. OIDC identities are the verified issuer and
-subject, never email; configure them in the paper's `readers` list. Unmapped
+subject (or a provider group, see [Group readers](#group-readers)), never email;
+configure them in the paper's `readers` list. Unmapped
 identities see only “No paper for you yet”. A removed mapping takes effect on the
 next online request after configuration reload.
 

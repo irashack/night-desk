@@ -218,6 +218,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	s.cookie(w, "nd_session", key, int(s.lifetime().Seconds()))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
 // groupsClaim reads the ID token's groups claim: an array of group names (a
 // lone string is taken as one group, a missing claim as none). Oversized
 // claims are refused rather than truncated, so membership is never guessed.
@@ -262,6 +263,7 @@ type principal struct {
 }
 
 func paperBase(id string) string { return "/p/" + id }
+
 type principalKey struct{}
 
 func current(r *http.Request) principal { return r.Context().Value(principalKey{}).(principal) }

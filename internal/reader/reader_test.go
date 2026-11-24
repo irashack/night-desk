@@ -42,6 +42,8 @@ type fakeProvider struct {
 	nonce, audience, subject string
 	codes                    map[string][2]string
 	pkce                     bool
+	groups                   any    // the groups claim, when set
+	scope                    string // the scope the last authorization asked for
 }
 
 func provider(t *testing.T, network *testhttp.Network) *fakeProvider {
@@ -63,6 +65,7 @@ func provider(t *testing.T, network *testhttp.Network) *fakeProvider {
 				http.Error(w, "bad authorization request", 400)
 				return
 			}
+			p.scope = q.Get("scope")
 			code := fmt.Sprint(len(p.codes) + 1)
 			p.codes[code] = [2]string{q.Get("nonce"), q.Get("code_challenge")}
 			dest, _ := url.Parse(q.Get("redirect_uri"))
@@ -86,6 +89,9 @@ func provider(t *testing.T, network *testhttp.Network) *fakeProvider {
 				aud = p.audience
 			}
 			claims := map[string]any{"iss": p.server.URL, "sub": p.subject, "aud": aud, "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": nonce, "email": "same@example.test"}
+			if p.groups != nil {
+				claims["groups"] = p.groups
+			}
 			payload, _ := json.Marshal(claims)
 			header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","kid":"test"}`))
 			unsigned := header + "." + base64.RawURLEncoding.EncodeToString(payload)

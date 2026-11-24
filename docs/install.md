@@ -55,7 +55,10 @@ Edit `config.yaml` before starting:
   providers show it as the user's ID in their admin UI, and it is also in the
   provider's userinfo response for that user.
   Alternatively, use an absolute `subject_file` path accessible inside the
-  container. The generated empty reader list grants nobody access.
+  container. To let a whole provider group read a paper, use
+  `{issuer: ..., group: "group-name"}` instead (see
+  [Group readers](configuration.md#group-readers)). The generated empty reader list
+  grants nobody access.
 - Choose `agent_role` (`author`, `reviewer` or `none`) and `deadline_policy`
   (`hold` or `publish-unreviewed`); the defaults are `author` and `hold`.
 - Adjust the paper's sections, timezone and coordinates. The generated zero
