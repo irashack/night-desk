@@ -46,7 +46,9 @@ share one server, each seeing only their own paper.
   checked against the stored snapshots of the articles it cites, and repeats, wire
   copy and unsupported items are flagged.
 - **A real reader app.** An installable PWA with offline reading of the latest
-  edition, archive search, saved items, per-item feedback, push notifications when
+  edition, a reading view that sets a story in the paper's own type from the
+  worker's stored copy (with its text size and your place kept per device),
+  archive search, saved items, per-item feedback, push notifications when
   the paper lands, and a complete no-JavaScript fallback.
 - **Coverage lean, if you want it.** Sections can show which side of the spectrum
   covered a story and flag blindspots, from a ratings file you provide.

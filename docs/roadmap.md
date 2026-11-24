@@ -4,28 +4,21 @@ Night Desk is a complete daily-paper service that stands on its own and works wi
 any agent, or none. What exists today: gathering and source checks in an isolated
 worker, drafting with OpenAI-compatible models or Claude, the draft and review
 protocol over HTTP, MCP and signed webhooks, edition schemas v1 and v2, coverage
-lean, web push, and an installable, offline-capable reader. How it is built is in
+lean, web push, and an installable, offline-capable reader with a reading view
+for stories the worker kept the text of. How it is built is in
 [design.md](design.md).
 
 Planned work keeps the existing boundaries: model calls and web fetching stay in
 the worker, fetched text stays data, facts come from code, and the edition contract
 and stored data keep the [upgrade promise](upgrading.md).
 
-## Next: a reading view
+## Next
 
-- [ ] **Read here:** a story opens in Night Desk itself, set in the paper's own
-  type, with a sticky "Back to the paper" bar that returns to the same page and
-  place, and a prominent "Open at <outlet>" link to the original.
-- [ ] **Where the text comes from:** the gathering worker's stored snapshot when
-  there is one; otherwise either the server fetches the page on first open through
-  the guarded client and keeps it with the edition, or the view offers only the
-  original link. Which of the two is still open: a fetch would be new outbound
-  traffic from the server, and it must never follow private addresses.
-- [ ] **Honest limits:** a paywalled or script-only page shows what extraction
-  gets and says so, with the original link first; the reading view is for the
-  paper's own readers and is never public or shared.
-- [ ] **Reading comforts:** text size and the reading layout's measure apply; the
-  last-read position in a story is kept per device.
+- **Fetch on first open:** when the gathering worker kept no snapshot of a story,
+  the reading view offers only the original link. Whether the server should instead
+  fetch the page on first open, through the guarded client that never follows
+  private addresses, is an open product decision: it would be new outbound traffic
+  from the server.
 
 ## Later
 

@@ -49,6 +49,7 @@ const shots = [
   { file: 'desktop-search.png', device: 'desktop', mode: 'light', layout: 'pages', path: '/search?q=bridge' },
   { file: 'phone-front-dark.png', device: 'phone', mode: 'dark', layout: 'pages', path: '/' },
   { file: 'phone-article.png', device: 'phone', mode: 'light', layout: 'list', path: '/', scroll: '#item-northgate-reopens', offset: 16 },
+  { file: 'phone-story.png', device: 'phone', mode: 'sepia', layout: 'pages', path: '/read/2026-11-19/northgate-reopens', scroll: '.story-text', offset: 420 },
 ];
 
 const contexts = {

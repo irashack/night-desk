@@ -27,6 +27,9 @@ type itemView struct {
 	// Opinions are the columns that name this story, in edition order.
 	Opinions []opinionView
 	Later    []followUp
+	// Read is the reading view's address when the paper holds the story's
+	// text; empty means only the link to the outlet.
+	Read string
 }
 
 // opinionView is an opinion column shown beside the story it argues about. Lean
@@ -78,6 +81,10 @@ type view struct {
 	// paper, /p/{paper} for the others it reads.
 	Base   string
 	Papers []paperLink
+	// Spot names the illustration of an empty page: moon, paper or mug.
+	Spot string
+	// Story is the reading view's story, set only on that page.
+	Story *storyView
 }
 
 // paperLink is one entry of the masthead's paper switcher.
@@ -136,6 +143,7 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(dates) == 0 {
 			v.Message = "Your first paper arrives tomorrow morning"
+			v.Spot = "moon"
 			s.render(w, "message", v)
 			return
 		}
@@ -217,6 +225,17 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 			attached[*it.About] = append(attached[*it.About], o)
 		}
 	}
+	var links []string
+	for _, sec := range ed.Sections {
+		for _, it := range sec.Items {
+			links = append(links, it.URL)
+		}
+	}
+	readable, err := s.Store.ReadableLinks(r.Context(), scope, links)
+	if err != nil {
+		http.Error(w, "Reader unavailable", 500)
+		return
+	}
 	for _, cfg := range sections {
 		section := sectionView{Key: cfg.Key, Title: cfg.Title, Page: len(v.Sections) + 2}
 		var opinions []itemView
@@ -226,6 +245,9 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, it := range sec.Items {
 				iv := itemView{Item: it, Image: images[it.ID], Date: date, Up: feedback[it.ID].Vote == "up", Down: feedback[it.ID].Vote == "down", Saved: feedback[it.ID].Saved, Later: later[it.ID]}
+				if readable[it.URL] {
+					iv.Read = v.Base + "/read/" + date + "/" + it.ID
+				}
 				if coverage != nil {
 					if bar, ok := coverage.Items[it.ID]; ok {
 						iv.Coverage = &bar

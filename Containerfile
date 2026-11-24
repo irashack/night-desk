@@ -13,7 +13,8 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main
 FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.source="https://github.com/irashack/night-desk" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.title="Night Desk"
+      org.opencontainers.image.title="Night Desk" \
+      org.opencontainers.image.description="A self-hosted daily paper with a circulation of one: your sources, an optional AI agent, an installable reader."
 COPY --from=build /out/nightdesk /nightdesk
 COPY --from=build --chown=65532:65532 /out/data /data
 WORKDIR /data

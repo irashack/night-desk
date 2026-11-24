@@ -391,3 +391,64 @@ func (s *Store) LaterCandidates(ctx context.Context, scope auth.PaperScope, sinc
 	}
 	return out, rows.Err()
 }
+
+// StorySnapshot is the stored text of a story for the reading view.
+type StorySnapshot struct {
+	Text      string
+	FetchedAt time.Time
+}
+
+// ReadableSnapshot finds a story's available snapshot by canonical URL or an
+// observed alias. A missing or unavailable snapshot returns ok=false.
+func (s *Store) ReadableSnapshot(ctx context.Context, scope auth.PaperScope, link string) (StorySnapshot, bool, error) {
+	paper, err := scopeID(scope)
+	if err != nil {
+		return StorySnapshot{}, false, err
+	}
+	var snap StorySnapshot
+	var fetched string
+	err = s.db.QueryRowContext(ctx, `SELECT text,fetched_at FROM candidates
+	 WHERE paper_id=? AND state='ok' AND (canonical_url=? OR EXISTS (SELECT 1 FROM json_each(candidates.aliases) WHERE value=?))
+	 ORDER BY (canonical_url=?) DESC,id LIMIT 1`, paper, link, link, link).Scan(&snap.Text, &fetched)
+	if errors.Is(err, sql.ErrNoRows) {
+		return StorySnapshot{}, false, nil
+	}
+	if err != nil {
+		return StorySnapshot{}, false, err
+	}
+	if snap.FetchedAt, err = time.Parse(time.RFC3339Nano, fetched); err != nil {
+		return StorySnapshot{}, false, err
+	}
+	return snap, true, nil
+}
+
+// ReadableLinks reports which of links have an available snapshot, by
+// canonical URL or alias, in one pass over the paper's pool.
+func (s *Store) ReadableLinks(ctx context.Context, scope auth.PaperScope, links []string) (map[string]bool, error) {
+	paper, err := scopeID(scope)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	if len(links) == 0 {
+		return out, nil
+	}
+	list, err := json.Marshal(links)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT l.value FROM json_each(?) l WHERE EXISTS (SELECT 1 FROM candidates c
+	 WHERE c.paper_id=? AND c.state='ok' AND (c.canonical_url=l.value OR EXISTS (SELECT 1 FROM json_each(c.aliases) a WHERE a.value=l.value)))`, string(list), paper)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var link string
+		if err := rows.Scan(&link); err != nil {
+			return nil, err
+		}
+		out[link] = true
+	}
+	return out, rows.Err()
+}
