@@ -2,6 +2,8 @@
 (() => {
   const $ = (s) => document.querySelector(s);
   const all = (s) => [...document.querySelectorAll(s)];
+  // The paper's own routes: empty for the default paper, /p/{paper} otherwise.
+  const base = $('meta[name=base]')?.content || '';
   const read = (key) => { try { return localStorage.getItem('nd-' + key); } catch (_) { return null; } };
   const remember = (key, value) => { try { localStorage.setItem('nd-' + key, value); } catch (_) {} };
   async function clearOffline() {
@@ -203,7 +205,7 @@
     related.forEach((r) => r.querySelectorAll('button').forEach((b) => { b.disabled = true; }));
     try {
       const body = new URLSearchParams({date: row.dataset.date, item: row.dataset.item, kind: kind === 'save' && wasOn ? 'unsave' : kind, csrf: $('meta[name=csrf]').content});
-      const res = await fetch('/feedback', {method: 'POST', body, credentials: 'same-origin'});
+      const res = await fetch(base + '/feedback', {method: 'POST', body, credentials: 'same-origin'});
       if (res.status === 401) { await clearOffline(); location.assign('/'); return; }
       if (res.status !== 204) throw new Error('Feedback not recorded');
       related.forEach((r) => r.querySelectorAll('button').forEach((b) => {
@@ -218,14 +220,14 @@
   // shows without navigating. On return, reload the front page if a newer
   // edition exists, and say so when only the saved copy can be shown.
   const shown = $('main.reader')?.dataset.date;
-  if (shown && location.pathname === '/') {
+  if (shown && location.pathname === base + '/') {
     const offline = () => status('Cannot reach the paper: this is the saved ' + shown + ' edition.');
     let checked = Date.now();
     const check = async (force) => {
       if (document.visibilityState !== 'visible' || (!force && Date.now() - checked < 5 * 60 * 1000)) return;
       checked = Date.now();
       try {
-        const res = await fetch('/', {cache: 'no-store', credentials: 'same-origin'});
+        const res = await fetch(base + '/', {cache: 'no-store', credentials: 'same-origin'});
         if (res.redirected || res.status === 401) { location.reload(); return; }
         const date = (await res.text()).match(/data-date="(\d{4}-\d{2}-\d{2})"/)?.[1];
         if (date && date !== shown) location.reload();
@@ -242,19 +244,24 @@
   if (bell && 'PushManager' in window && 'Notification' in window) {
     const manager = async () => (await navigator.serviceWorker.ready).pushManager;
     const show = (on) => bell.setAttribute('aria-checked', String(!!on));
+    // One browser subscription serves every paper the reader opted in to; the
+    // server says which papers it notifies for.
+    const post = (action, sub) => fetch(base + '/push/' + action, {method: 'POST', body: new URLSearchParams({subscription: JSON.stringify(sub), csrf: $('meta[name=csrf]').content}), credentials: 'same-origin'});
+    const isOn = async (sub) => { if (!sub) return false; const res = await post('status', sub); if (!res.ok) throw new Error('Unknown'); return (await res.json()).on; };
     bell.parentNode.hidden = false;
-    manager().then((m) => m.getSubscription()).then(show, () => {});
+    manager().then((m) => m.getSubscription()).then(isOn).then(show, () => {});
     bell.addEventListener('click', async () => {
-      let sub;
+      let sub, created = false;
       try {
-        const m = await manager(), old = await m.getSubscription();
+        const m = await manager(), old = await m.getSubscription(), on = await isOn(old);
         if (!old && await Notification.requestPermission() !== 'granted') return status('Notifications are blocked for this site.');
         sub = old || await m.subscribe({userVisibleOnly: true, applicationServerKey: Uint8Array.from(atob(bell.dataset.push.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))});
-        const res = await fetch('/push/' + (old ? 'unsubscribe' : 'subscribe'), {method: 'POST', body: new URLSearchParams({subscription: JSON.stringify(sub), csrf: $('meta[name=csrf]').content}), credentials: 'same-origin'});
-        if (res.status !== 204) throw new Error('Not changed');
-        if (old) await old.unsubscribe();
-        show(!old);
-      } catch (_) { if (sub && bell.getAttribute('aria-checked') !== 'true') sub.unsubscribe(); status('Could not change notifications.'); }
+        created = !old;
+        const res = await post(on ? 'unsubscribe' : 'subscribe', sub);
+        if (!res.ok) throw new Error('Not changed');
+        if (on && res.headers.get('X-Push-Remaining') === '0') await sub.unsubscribe();
+        show(!on);
+      } catch (_) { if (sub && created) sub.unsubscribe(); status('Could not change notifications.'); }
     });
   }
   if ('serviceWorker' in navigator && $('meta[name=offline-owner]')?.content) {

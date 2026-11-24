@@ -382,7 +382,7 @@ func (c *Config) Validate() error {
 	if e != nil || d <= 0 {
 		add("server.session_lifetime", "must be a positive duration")
 	}
-	if d, e := time.ParseDuration(c.Server.GroupSessionLifetime); e != nil || d <= 0 {
+	if d, e := time.ParseDuration(c.Server.GroupSessionLifetime); c.Server.GroupSessionLifetime != "" && (e != nil || d <= 0) {
 		add("server.group_session_lifetime", "must be a positive duration")
 	}
 	if len(c.Papers) == 0 {

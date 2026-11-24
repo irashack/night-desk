@@ -41,22 +41,45 @@ func (s *Store) AddPushSubscription(ctx context.Context, scope auth.ReaderScope,
 	if others >= PushDeviceLimit {
 		return ErrPushLimit
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO push_subscriptions(paper_id,reader_issuer,reader_subject,session_hash,endpoint,expires_at,created_at) VALUES (?,?,?,?,?,?,?)
-	 ON CONFLICT(paper_id,reader_issuer,reader_subject,endpoint) DO UPDATE SET session_hash=excluded.session_hash,expires_at=excluded.expires_at`, paper, session.Issuer, session.Subject, session.Hash[:], endpoint, expiry, now()); err != nil {
+	groups, err := encodeGroups(session.Groups)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO push_subscriptions(paper_id,reader_issuer,reader_subject,session_hash,endpoint,expires_at,created_at,reader_groups) VALUES (?,?,?,?,?,?,?,?)
+	 ON CONFLICT(paper_id,reader_issuer,reader_subject,endpoint) DO UPDATE SET session_hash=excluded.session_hash,expires_at=excluded.expires_at,reader_groups=excluded.reader_groups`, paper, session.Issuer, session.Subject, session.Hash[:], endpoint, expiry, now(), groups); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// RemovePushSubscription removes one of the session reader's own devices.
-func (s *Store) RemovePushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string) error {
+// RemovePushSubscription removes one of the session reader's own devices from
+// the scope's paper and reports how many of the reader's other papers the
+// device still notifies for.
+func (s *Store) RemovePushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string) (int, error) {
 	paper, err := scopeID(scope.PaperScope())
 	if err != nil {
-		return err
+		return 0, err
 	}
 	session := scope.Session()
-	_, err = s.db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE paper_id=? AND reader_issuer=? AND reader_subject=? AND endpoint=?`, paper, session.Issuer, session.Subject, endpoint)
-	return err
+	if _, err = s.db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE paper_id=? AND reader_issuer=? AND reader_subject=? AND endpoint=?`, paper, session.Issuer, session.Subject, endpoint); err != nil {
+		return 0, err
+	}
+	var remaining int
+	err = s.db.QueryRowContext(ctx, `SELECT count(*) FROM push_subscriptions WHERE reader_issuer=? AND reader_subject=? AND endpoint=?`, session.Issuer, session.Subject, endpoint).Scan(&remaining)
+	return remaining, err
+}
+
+// HasPushSubscription reports whether the device notifies the session reader
+// of the scope's paper.
+func (s *Store) HasPushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string) (bool, error) {
+	paper, err := scopeID(scope.PaperScope())
+	if err != nil {
+		return false, err
+	}
+	session := scope.Session()
+	var on bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE paper_id=? AND reader_issuer=? AND reader_subject=? AND endpoint=?)`, paper, session.Issuer, session.Subject, endpoint).Scan(&on)
+	return on, err
 }
 
 // PushSubscriptions counts the session reader's registered devices.
@@ -113,7 +136,9 @@ type PushDelivery struct {
 	Paper, Date     string
 	Endpoint        string
 	Issuer, Subject string
-	Attempts        int
+	// Groups is the reader's groups claim as of their latest sign-in.
+	Groups   []string
+	Attempts int
 }
 
 // ClaimPush reserves one due notification before sending, like ClaimDelivery:
@@ -132,7 +157,8 @@ func (s *Store) ClaimPush(ctx context.Context, at time.Time) (PushDelivery, erro
 		return PushDelivery{}, err
 	}
 	var d PushDelivery
-	err = tx.QueryRowContext(ctx, `SELECT d.subscription_id,s.paper_id,d.date,s.endpoint,s.reader_issuer,s.reader_subject,d.attempts FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.next_attempt_at<=? ORDER BY d.next_attempt_at,d.subscription_id LIMIT 1`, at.Unix()).Scan(&d.Subscription, &d.Paper, &d.Date, &d.Endpoint, &d.Issuer, &d.Subject, &d.Attempts)
+	var groups string
+	err = tx.QueryRowContext(ctx, `SELECT d.subscription_id,s.paper_id,d.date,s.endpoint,s.reader_issuer,s.reader_subject,s.reader_groups,d.attempts FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.next_attempt_at<=? ORDER BY d.next_attempt_at,d.subscription_id LIMIT 1`, at.Unix()).Scan(&d.Subscription, &d.Paper, &d.Date, &d.Endpoint, &d.Issuer, &d.Subject, &groups, &d.Attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		if err = tx.Commit(); err != nil {
 			return d, err
@@ -140,6 +166,9 @@ func (s *Store) ClaimPush(ctx context.Context, at time.Time) (PushDelivery, erro
 		return d, sql.ErrNoRows
 	}
 	if err != nil {
+		return d, err
+	}
+	if d.Groups, err = decodeGroups(groups); err != nil {
 		return d, err
 	}
 	d.Attempts++

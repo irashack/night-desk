@@ -2,20 +2,39 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/irashack/night-desk/internal/auth"
 )
 
 func (s *Store) InsertSession(ctx context.Context, v auth.Session) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions VALUES (?,?,?,?,?,?,?)`, v.Hash[:], v.Issuer, v.Subject, v.Created.UTC().Format(time.RFC3339Nano), v.Expires.UTC().Format(time.RFC3339Nano), v.LastSeen.UTC().Format(time.RFC3339Nano), v.CSRF)
-	return err
+	groups, err := encodeGroups(v.Groups)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO sessions(id_hash,issuer,subject,created_at,expires_at,last_seen_at,csrf,groups) VALUES (?,?,?,?,?,?,?,?)`, v.Hash[:], v.Issuer, v.Subject, v.Created.UTC().Format(time.RFC3339Nano), v.Expires.UTC().Format(time.RFC3339Nano), v.LastSeen.UTC().Format(time.RFC3339Nano), v.CSRF, groups); err != nil {
+		return err
+	}
+	// Each sign-in refreshes the groups the reader's push subscriptions carry.
+	if _, err = tx.ExecContext(ctx, `UPDATE push_subscriptions SET reader_groups=? WHERE reader_issuer=? AND reader_subject=?`, groups, v.Issuer, v.Subject); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (s *Store) Session(ctx context.Context, hash [32]byte) (auth.Session, error) {
 	v := auth.Session{Hash: hash}
-	var created, expires, seen string
-	err := s.db.QueryRowContext(ctx, `SELECT issuer,subject,created_at,expires_at,last_seen_at,csrf FROM sessions WHERE id_hash=?`, hash[:]).Scan(&v.Issuer, &v.Subject, &created, &expires, &seen, &v.CSRF)
+	var created, expires, seen, groups string
+	err := s.db.QueryRowContext(ctx, `SELECT issuer,subject,created_at,expires_at,last_seen_at,csrf,groups FROM sessions WHERE id_hash=?`, hash[:]).Scan(&v.Issuer, &v.Subject, &created, &expires, &seen, &v.CSRF, &groups)
 	if err != nil {
+		return v, err
+	}
+	if v.Groups, err = decodeGroups(groups); err != nil {
 		return v, err
 	}
 	if v.Created, err = time.Parse(time.RFC3339Nano, created); err != nil {
@@ -26,6 +45,20 @@ func (s *Store) Session(ctx context.Context, hash [32]byte) (auth.Session, error
 	}
 	v.LastSeen, err = time.Parse(time.RFC3339Nano, seen)
 	return v, err
+}
+func encodeGroups(groups []string) (string, error) {
+	if groups == nil {
+		groups = []string{}
+	}
+	b, err := json.Marshal(groups)
+	return string(b), err
+}
+func decodeGroups(v string) ([]string, error) {
+	var groups []string
+	if err := json.Unmarshal([]byte(v), &groups); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 func (s *Store) SlideSession(ctx context.Context, hash [32]byte, now, expires time.Time) error {
 	// julianday avoids lexicographic comparisons between fractional timestamp widths.

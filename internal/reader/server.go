@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +125,17 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /push/subscribe", s.protect(http.HandlerFunc(s.pushSubscribe), false))
 	mux.Handle("POST /push/unsubscribe", s.protect(http.HandlerFunc(s.pushUnsubscribe), false))
 	mux.Handle("GET /manifest.webmanifest", s.protect(http.HandlerFunc(s.manifest), false))
+	// Every paper a session reads besides its default one lives under /p/{paper}.
+	// Sections stay at /sections: only a subject reader's own paper is editable.
+	mux.Handle("GET /p/{paper}/{$}", s.protect(http.HandlerFunc(s.edition), false))
+	mux.Handle("GET /p/{paper}/e/{date}", s.protect(http.HandlerFunc(s.edition), false))
+	mux.Handle("GET /p/{paper}/search", s.protect(http.HandlerFunc(s.search), false))
+	mux.Handle("GET /p/{paper}/archive", s.protect(http.HandlerFunc(s.archive), false))
+	mux.Handle("POST /p/{paper}/feedback", s.protect(http.HandlerFunc(s.feedback), false))
+	mux.Handle("POST /p/{paper}/push/subscribe", s.protect(http.HandlerFunc(s.pushSubscribe), false))
+	mux.Handle("POST /p/{paper}/push/unsubscribe", s.protect(http.HandlerFunc(s.pushUnsubscribe), false))
+	mux.Handle("POST /p/{paper}/push/status", s.protect(http.HandlerFunc(s.pushStatus), false))
+	mux.Handle("POST /push/status", s.protect(http.HandlerFunc(s.pushStatus), false))
 	return Headers(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		mux.ServeHTTP(w, r)
@@ -149,7 +161,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.pending[sha256.Sum256([]byte(key))] = transaction{state, nonce, verifier, now.Add(10 * time.Minute)}
 	s.mu.Unlock()
 	s.cookie(w, "nd_login", key, 600)
-	http.Redirect(w, r, s.oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce)), http.StatusFound)
+	oauth := s.oauth
+	oauth.Scopes = s.Config().SignInScopes()
+	http.Redirect(w, r, oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce)), http.StatusFound)
 }
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("nd_login")
@@ -184,9 +198,16 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sign-in failed", 400)
 		return
 	}
+	var groups []string
+	if s.Config().WantsGroups() {
+		if groups, err = groupsClaim(id); err != nil {
+			http.Error(w, "Sign-in failed", 400)
+			return
+		}
+	}
 	key := random()
 	now := s.now()
-	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: id.Issuer, Subject: id.Subject, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime())}
+	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: id.Issuer, Subject: id.Subject, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime()), Groups: groups}
 	if err = s.Store.InsertSession(r.Context(), session); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
@@ -197,12 +218,50 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	s.cookie(w, "nd_session", key, int(s.lifetime().Seconds()))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+// groupsClaim reads the ID token's groups claim: an array of group names (a
+// lone string is taken as one group, a missing claim as none). Oversized
+// claims are refused rather than truncated, so membership is never guessed.
+func groupsClaim(id *oidc.IDToken) ([]string, error) {
+	var claims struct {
+		Groups json.RawMessage `json:"groups"`
+	}
+	if err := id.Claims(&claims); err != nil {
+		return nil, err
+	}
+	if len(claims.Groups) == 0 || string(claims.Groups) == "null" {
+		return nil, nil
+	}
+	var groups []string
+	if err := json.Unmarshal(claims.Groups, &groups); err != nil {
+		var one string
+		if json.Unmarshal(claims.Groups, &one) != nil {
+			return nil, fmt.Errorf("groups claim is not a list of names")
+		}
+		groups = []string{one}
+	}
+	if len(groups) > 512 {
+		return nil, fmt.Errorf("groups claim too large")
+	}
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if len(g) > 256 {
+			return nil, fmt.Errorf("group name too long")
+		}
+		if g != "" && !slices.Contains(out, g) {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
 func equal(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
 
 type principal struct {
 	scope auth.ReaderScope
 	paper config.Paper
+	base  string // link prefix of the selected paper, see view.Base
 }
+
+func paperBase(id string) string { return "/p/" + id }
 type principalKey struct{}
 
 func current(r *http.Request) principal { return r.Context().Value(principalKey{}).(principal) }
@@ -234,8 +293,20 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 			}
 			return
 		}
+		base := ""
+		if id := r.PathValue("paper"); id != "" {
+			selected, ok := scope.For(id)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			scope = selected
+			if !scope.Default() {
+				base = paperBase(id)
+			}
+		}
 		paper, _ := cfg.Paper(scope.PaperScope().PaperID())
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal{scope, paper})))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal{scope, paper, base})))
 	})
 }
 func unauthorized(w http.ResponseWriter, r *http.Request) {
@@ -340,10 +411,18 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sha := strings.TrimSuffix(name, ".jpg")
-	ok, err := s.Store.HasImage(r.Context(), current(r).scope.PaperScope(), sha)
-	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+	// Image links carry no paper, so any paper the session reads may serve one.
+	var ok bool
+	for _, a := range current(r).scope.Papers() {
+		scope, _ := current(r).scope.For(a.Paper)
+		found, err := s.Store.HasImage(r.Context(), scope.PaperScope(), sha)
+		if err != nil {
+			http.Error(w, "Reader unavailable", 500)
+			return
+		}
+		if ok = found; ok {
+			break
+		}
 	}
 	if !ok {
 		http.NotFound(w, r)

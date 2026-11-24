@@ -582,8 +582,9 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	t.Logf("uncompressed HTML + CSS + JS + regular fonts: %d bytes", total)
 	// Raised from 150 KB for the Sections editor, opinion beside its story,
 	// since-published lines and the push toggle; the four fonts are most of it.
-	if total >= 160000 {
-		t.Fatalf("first load exceeds 160 KB: %d", total)
+	// Raised to 162 KB for the paper switcher and per-paper push status.
+	if total >= 162000 {
+		t.Fatalf("first load exceeds 162 KB: %d", total)
 	}
 }
 

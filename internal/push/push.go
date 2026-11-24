@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/fetch"
 	"github.com/irashack/night-desk/internal/store"
@@ -159,14 +160,13 @@ func (l *Loop) Tick(ctx context.Context) error {
 	return nil
 }
 
-// reads reports whether the subscription's reader still reads its paper, by the
-// same first-match rule as sign-in.
+// reads reports whether the subscription's reader still reads its paper under
+// the current configuration: by subject (the same first-match rule as sign-in)
+// or through the groups their latest sign-in carried.
 func reads(c *config.Config, d store.PushDelivery) bool {
-	for _, p := range c.Papers {
-		for _, r := range p.Readers {
-			if r.Issuer == d.Issuer && r.ResolvedSubject() == d.Subject {
-				return p.ID == d.Paper
-			}
+	for _, a := range auth.Readable(c, d.Issuer, d.Subject, d.Groups) {
+		if a.Paper == d.Paper {
+			return true
 		}
 	}
 	return false

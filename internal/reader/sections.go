@@ -19,7 +19,7 @@ type sectionRow struct {
 var sectionNotices = map[string]string{"added": "Section added", "saved": "Section saved", "moved": "Section moved", "removed": "Section removed"}
 
 func (s *Server) sections(w http.ResponseWriter, r *http.Request) {
-	if s.Editorial == nil {
+	if s.Editorial == nil || !current(r).scope.BySubject() || !current(r).scope.Default() {
 		http.NotFound(w, r)
 		return
 	}
@@ -44,7 +44,7 @@ func (s *Server) sectionsView(r *http.Request, sections []config.Section) view {
 // fields and saves the result as one revision, exactly as the agent API's paper
 // patch does, so both share validation and history.
 func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
-	if s.Editorial == nil {
+	if s.Editorial == nil || !current(r).scope.BySubject() || !current(r).scope.Default() {
 		http.NotFound(w, r)
 		return
 	}
@@ -91,7 +91,7 @@ func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
 			to = at + 1
 		}
 		if to < 0 || to >= len(sections) {
-			http.Redirect(w, r, "/sections", http.StatusSeeOther)
+			http.Redirect(w, r, "/sections", http.StatusSeeOther) // sections are only ever the default paper's
 			return
 		}
 		sections[at], sections[to] = sections[to], sections[at]
