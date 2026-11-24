@@ -18,7 +18,7 @@ func (s *Store) InsertSession(ctx context.Context, v auth.Session) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO sessions(id_hash,issuer,subject,created_at,expires_at,last_seen_at,csrf,groups) VALUES (?,?,?,?,?,?,?,?)`, v.Hash[:], v.Issuer, v.Subject, v.Created.UTC().Format(time.RFC3339Nano), v.Expires.UTC().Format(time.RFC3339Nano), v.LastSeen.UTC().Format(time.RFC3339Nano), v.CSRF, groups); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO sessions(id_hash,issuer,subject,created_at,expires_at,last_seen_at,csrf,groups,groups_checked) VALUES (?,?,?,?,?,?,?,?,?)`, v.Hash[:], v.Issuer, v.Subject, v.Created.UTC().Format(time.RFC3339Nano), v.Expires.UTC().Format(time.RFC3339Nano), v.LastSeen.UTC().Format(time.RFC3339Nano), v.CSRF, groups, v.GroupsChecked); err != nil {
 		return err
 	}
 	// Each sign-in refreshes the groups the reader's push subscriptions carry.
@@ -30,7 +30,7 @@ func (s *Store) InsertSession(ctx context.Context, v auth.Session) error {
 func (s *Store) Session(ctx context.Context, hash [32]byte) (auth.Session, error) {
 	v := auth.Session{Hash: hash}
 	var created, expires, seen, groups string
-	err := s.db.QueryRowContext(ctx, `SELECT issuer,subject,created_at,expires_at,last_seen_at,csrf,groups FROM sessions WHERE id_hash=?`, hash[:]).Scan(&v.Issuer, &v.Subject, &created, &expires, &seen, &v.CSRF, &groups)
+	err := s.db.QueryRowContext(ctx, `SELECT issuer,subject,created_at,expires_at,last_seen_at,csrf,groups,groups_checked FROM sessions WHERE id_hash=?`, hash[:]).Scan(&v.Issuer, &v.Subject, &created, &expires, &seen, &v.CSRF, &groups, &v.GroupsChecked)
 	if err != nil {
 		return v, err
 	}
