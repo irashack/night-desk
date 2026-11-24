@@ -200,10 +200,9 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	var groups []string
 	if s.Config().WantsGroups() {
-		if groups, err = groupsClaim(id); err != nil {
-			http.Error(w, "Sign-in failed", 400)
-			return
-		}
+		// A claim that cannot be read grants no group, but never blocks a
+		// reader whose access does not depend on it.
+		groups, _ = groupsClaim(id)
 	}
 	key := random()
 	now := s.now()
@@ -220,8 +219,9 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 }
 
 // groupsClaim reads the ID token's groups claim: an array of group names (a
-// lone string is taken as one group, a missing claim as none). Oversized
-// claims are refused rather than truncated, so membership is never guessed.
+// lone string is taken as one group, a missing claim as none). Malformed or
+// oversized claims are an error rather than truncated, so membership is never
+// guessed.
 func groupsClaim(id *oidc.IDToken) ([]string, error) {
 	var claims struct {
 		Groups json.RawMessage `json:"groups"`
@@ -298,11 +298,26 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 		base := ""
 		if id := r.PathValue("paper"); id != "" {
 			selected, ok := scope.For(id)
+			if !ok && slices.Contains(scope.Refresh(), id) {
+				// Membership as of sign-in has run out: sign in again to
+				// refresh it. The session keeps reading its own paper.
+				unauthorized(w, r)
+				return
+			}
 			if !ok {
 				http.NotFound(w, r)
 				return
 			}
 			scope = selected
+			if scope.Default() && r.Method == http.MethodGet {
+				// One URL per page: the default paper lives at /.
+				target := strings.TrimPrefix(r.URL.Path, paperBase(id))
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusSeeOther)
+				return
+			}
 			if !scope.Default() {
 				base = paperBase(id)
 			}

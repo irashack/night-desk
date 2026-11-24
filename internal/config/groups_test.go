@@ -53,6 +53,7 @@ func TestGroupReaders(t *testing.T) {
 		{"    subject: reader-one\n", "    group: ''\n", "papers[0].readers[0].subject_file"},
 		{"    subject: reader-one\n", "    group: family\n  - issuer: https://id.example\n    group: family\n", "duplicate issuer/group pair"},
 		{"    subject: reader-one\n", "    group: \"bad\\u0001\"\n", "papers[0].readers[0].group"},
+		{"    subject: reader-one\n", "    group: " + strings.Repeat("g", 257) + "\n", "papers[0].readers[0].group"},
 		{"  data_dir: data\n", "  data_dir: data\n  group_session_lifetime: -1h\n", "server.group_session_lifetime"},
 		{"  data_dir: data\n", "  data_dir: data\n  group_session_lifetime: soon\n", "server.group_session_lifetime"},
 	} {

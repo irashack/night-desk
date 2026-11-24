@@ -37,6 +37,7 @@ type ReaderScope struct {
 	paper   PaperScope
 	papers  []Access
 	subject bool
+	refresh []string
 }
 
 func (s ReaderScope) PaperScope() PaperScope { return s.paper }
@@ -46,9 +47,16 @@ func (s ReaderScope) Session() Session       { return s.session }
 // group papers in configuration order.
 func (s ReaderScope) Papers() []Access { return slices.Clone(s.papers) }
 
-// BySubject reports whether the selected paper is read by subject. Only those
-// readers may edit the paper's sections.
+// BySubject reports whether the selected paper is read by subject.
 func (s ReaderScope) BySubject() bool { return s.subject }
+
+// CanEdit reports whether the reader may edit the selected paper's sections:
+// only a subject reader, on their own paper (always the default one).
+func (s ReaderScope) CanEdit() bool { return s.subject && s.Default() }
+
+// Refresh lists group papers the session read until its group membership
+// went stale; signing in again restores them if the reader is still a member.
+func (s ReaderScope) Refresh() []string { return slices.Clone(s.refresh) }
 
 // Default reports whether the selected paper is the session's first paper,
 // the one served at /.
@@ -111,20 +119,28 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 		return ReaderScope{}, ErrUnauthorized
 	}
 	// Group membership holds as of sign-in, and only for the group lifetime.
-	groups := session.Groups
-	stale := !session.Created.Add(cfg.GroupLifetime()).After(now)
+	stale := cfg.HasGroupReaders() && !session.Created.Add(cfg.GroupLifetime()).After(now)
+	var papers []Access
+	var refresh []string
 	if stale {
-		groups = nil
-	}
-	papers := Readable(cfg, session.Issuer, session.Subject, groups)
-	if len(papers) == 0 && stale && len(Readable(cfg, session.Issuer, session.Subject, session.Groups)) > 0 {
-		// A reader admitted only by group signs in again to refresh membership.
-		return ReaderScope{}, ErrUnauthorized
+		papers = Readable(cfg, session.Issuer, session.Subject, nil)
+		if len(papers) == 0 {
+			// Without a paper of its own the session signs in again, to read
+			// group papers it may have joined or still belongs to.
+			return ReaderScope{}, ErrUnauthorized
+		}
+		for _, a := range Readable(cfg, session.Issuer, session.Subject, session.Groups) {
+			if !a.BySubject {
+				refresh = append(refresh, a.Paper)
+			}
+		}
+	} else {
+		papers = Readable(cfg, session.Issuer, session.Subject, session.Groups)
 	}
 	if err = lookup.SlideSession(ctx, session.Hash, now, now.Add(lifetime)); err != nil {
 		return ReaderScope{}, err
 	}
-	scope := ReaderScope{session: session, papers: papers}
+	scope := ReaderScope{session: session, papers: papers, refresh: refresh}
 	if len(papers) == 0 {
 		return scope, ErrUnmapped
 	}

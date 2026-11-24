@@ -85,8 +85,11 @@ func TestGroupMembershipExpires(t *testing.T) {
 	later := signedIn.Add(24 * time.Hour)
 	// A subject reader keeps their own paper and loses the group paper.
 	scope, err := AuthenticateReader(context.Background(), lookup, cfg, token, later, time.Hour)
-	if err != nil || papers(scope) != "own*" {
-		t.Fatal("stale groups still granted", papers(scope), err)
+	if err != nil || papers(scope) != "own*" || strings.Join(scope.Refresh(), ",") != "shared" || !scope.CanEdit() {
+		t.Fatal("stale groups still granted", papers(scope), scope.Refresh(), err)
+	}
+	if _, ok := scope.For("shared"); ok {
+		t.Fatal("stale group paper selected")
 	}
 	// A reader admitted only by group must sign in again.
 	lookup.session.Subject = "reader-z"
@@ -101,6 +104,17 @@ func TestGroupMembershipExpires(t *testing.T) {
 	if _, err = AuthenticateReader(context.Background(), lookup, cfg, token, signedIn.Add(time.Hour), time.Hour); err != ErrUnauthorized {
 		t.Fatal("group_session_lifetime ignored", err)
 	}
+	// An unmapped session is offered sign-in again once stale, but only when
+	// some paper has group readers; otherwise unmapped behavior is unchanged.
+	lookup.session.Groups = nil
+	if _, err = AuthenticateReader(context.Background(), lookup, cfg, token, later, time.Hour); err != ErrUnauthorized {
+		t.Fatal("stale unmapped session", err)
+	}
+	plain := &config.Config{Papers: cfg.Papers[:2]}
+	if _, err = AuthenticateReader(context.Background(), lookup, plain, token, later.Add(600*time.Hour), 720*time.Hour); err != ErrUnmapped {
+		t.Fatal("unmapped behavior changed without group readers", err)
+	}
+	lookup.session.Groups = []string{"family"}
 	// Removing the group reader from the paper takes effect at once.
 	cfg.Server.GroupSessionLifetime = "24h"
 	cfg.Papers[2].Readers = cfg.Papers[2].Readers[1:]

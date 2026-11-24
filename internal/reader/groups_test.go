@@ -43,7 +43,8 @@ func TestGroupScopeRequested(t *testing.T) {
 	if s, _ := f.session(t); !slices.Equal(s.Groups, []string{"family", "chess"}) {
 		t.Fatal("groups claim not stored", s.Groups)
 	}
-	// A lone string counts as one group; a malformed claim refuses sign-in.
+	// A lone string counts as one group; a malformed claim grants no group but
+	// does not block sign-in.
 	f.p.groups = "family"
 	f.newBrowser()
 	r = f.signIn(t, "")
@@ -51,12 +52,17 @@ func TestGroupScopeRequested(t *testing.T) {
 	if s, _ := f.session(t); !slices.Equal(s.Groups, []string{"family"}) {
 		t.Fatal("string groups claim", s.Groups)
 	}
-	f.p.groups = map[string]any{"family": true}
-	f.newBrowser()
-	if r = f.signIn(t, ""); r.StatusCode != 400 {
-		t.Fatal("malformed groups claim accepted", r.StatusCode)
+	for _, bad := range []any{map[string]any{"family": true}, []any{1, 2}, []string{strings.Repeat("g", 257)}} {
+		f.p.groups = bad
+		f.newBrowser()
+		if r = f.signIn(t, ""); r.StatusCode != 303 {
+			t.Fatal("malformed groups claim blocked a subject reader", r.StatusCode)
+		}
+		r.Body.Close()
+		if s, _ := f.session(t); len(s.Groups) != 0 {
+			t.Fatal("malformed groups claim stored", s.Groups)
+		}
 	}
-	r.Body.Close()
 }
 
 func TestSubjectReaderWithGroupPaper(t *testing.T) {
@@ -78,9 +84,16 @@ func TestSubjectReaderWithGroupPaper(t *testing.T) {
 	if r.StatusCode != 200 || !strings.Contains(html, "The Arcadia Daily") || !strings.Contains(html, `<meta name="base" content="/p/c">`) || !strings.Contains(html, `href="/p/c/archive"`) || strings.Contains(html, `href="/sections"`) {
 		t.Fatal("shared paper page", r.StatusCode)
 	}
-	for _, path := range []string{"/p/c/e/2026-11-20", "/p/c/archive", "/p/c/search?q=researched", "/p/a/"} {
+	for _, path := range []string{"/p/c/e/2026-11-20", "/p/c/archive", "/p/c/search?q=researched"} {
 		if r = f.get(t, path); r.StatusCode != 200 {
 			t.Fatalf("%s: %d", path, r.StatusCode)
+		}
+		r.Body.Close()
+	}
+	// The default paper has one URL: /p/a/... redirects to /.
+	for path, want := range map[string]string{"/p/a/": "/", "/p/a/e/2026-11-20": "/e/2026-11-20", "/p/a/search?q=x": "/search?q=x"} {
+		if r = f.get(t, path); r.StatusCode != 303 || r.Header.Get("Location") != want {
+			t.Fatalf("%s: %d %s", path, r.StatusCode, r.Header.Get("Location"))
 		}
 		r.Body.Close()
 	}
@@ -107,15 +120,32 @@ func TestSubjectReaderWithGroupPaper(t *testing.T) {
 	if html = body(t, f.get(t, "/e/2026-11-20")); strings.Contains(html, `data-kind="up" aria-pressed="true"`) {
 		t.Fatal("shared paper feedback shown on the own paper")
 	}
-	// Past the group lifetime the shared paper is gone and the own paper stays.
+	// Past the group lifetime the own paper stays; the shared paper asks for
+	// a fresh sign-in, which restores it while the reader is still a member.
 	f.s.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
-	if r = f.get(t, "/p/c/"); r.StatusCode != 404 {
-		t.Fatal("stale group still reads", r.StatusCode)
+	if r = f.get(t, "/p/c/"); r.StatusCode != 401 || !strings.Contains(body(t, r), `href="/login"`) {
+		t.Fatal("stale group paper does not ask for sign-in", r.StatusCode)
+	}
+	if r = f.get(t, "/p/c/archive"); r.StatusCode != 401 {
+		t.Fatal("stale group archive", r.StatusCode)
 	}
 	r.Body.Close()
-	if html = body(t, f.get(t, "/")); !strings.Contains(html, "The A Gazette") || strings.Contains(html, "/p/c/") {
-		t.Fatal("own paper after group expiry")
+	if html = body(t, f.get(t, "/")); !strings.Contains(html, "The A Gazette") || !strings.Contains(html, `<a href="/p/c/">The Arcadia Daily</a>`) {
+		t.Fatal("own paper or refresh link after group expiry")
 	}
+	if r = f.get(t, "/p/b/"); r.StatusCode != 404 {
+		t.Fatal("unread paper after group expiry", r.StatusCode)
+	}
+	r.Body.Close()
+	// Signing in again as a non-member keeps only the own paper.
+	f.s.now = time.Now
+	f.p.groups = []string{"chess"}
+	r = f.signIn(t, "")
+	r.Body.Close()
+	if r = f.get(t, "/p/c/"); r.StatusCode != 404 {
+		t.Fatal("removed member reads the shared paper", r.StatusCode)
+	}
+	r.Body.Close()
 }
 
 func TestGroupOnlyReader(t *testing.T) {
@@ -166,7 +196,8 @@ func TestGroupOnlyReader(t *testing.T) {
 		t.Fatal("stale group-only session kept", r.StatusCode)
 	}
 	r.Body.Close()
-	// Without the group a reader is unmapped, as before.
+	// Without the group a reader is unmapped, as before, until membership is
+	// stale; then sign-in is offered again, in case they have joined since.
 	f.s.now = time.Now
 	f.p.groups = []string{"chess"}
 	f.newBrowser()
@@ -175,6 +206,11 @@ func TestGroupOnlyReader(t *testing.T) {
 	if html = body(t, f.get(t, "/")); !strings.Contains(html, "No paper for you yet") {
 		t.Fatal("reader outside the group got a paper")
 	}
+	f.s.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	if r = f.get(t, "/"); r.StatusCode != 401 {
+		t.Fatal("stale unmapped session not offered sign-in", r.StatusCode)
+	}
+	r.Body.Close()
 }
 
 func TestPushPerPaper(t *testing.T) {

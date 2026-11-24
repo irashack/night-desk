@@ -154,16 +154,22 @@ issuer/group pairs on one paper are rejected.
 - Group readers read, search, give feedback and turn on notifications. Editing
   sections (`/sections`) stays with the subject reader of their own paper.
 - Membership is as of sign-in. It counts for `server.group_session_lifetime`
-  (default `24h`) from sign-in, whatever `session_lifetime` is; after that, a
-  subject reader keeps their own paper and a group-only reader is asked to sign in
-  again. So someone removed from the group in the provider loses the paper within
-  that time. Removing the `group` reader from the configuration takes effect at once.
+  (default `24h`) from sign-in, whatever `session_lifetime` is. After that, a
+  subject reader keeps their own paper, and the switcher's group papers ask them to
+  sign in again; a reader with no paper of their own is asked to sign in again at
+  once. Signing in reads the groups afresh, so someone removed from the group in
+  the provider loses the paper within that time. Removing the `group` reader from
+  the configuration takes effect at once. A groups claim that is not a list of
+  names (at most 512, each at most 256 bytes) grants no group and does not block
+  sign-in.
 - Notifications are per paper. Each sign-in refreshes the groups that reader's
   push subscriptions carry, and each push rechecks that the reader still reads the
   paper, by subject or by those groups. A removed member who never signs in again
   keeps getting the empty "paper is ready" push until the group reader is removed
   from the configuration or the device unsubscribes; opening it asks for sign-in.
 - The agent API is unchanged: a shared paper has its own agent key like any other.
+- Only the default paper (at `/`) is saved for offline reading, and a
+  notification opens `/`; the other papers need a connection and the switcher.
 
 Health checks use `GET /healthz`. SIGTERM allows ten seconds for requests to
 finish. Backups require a fresh destination outside the data directory and include

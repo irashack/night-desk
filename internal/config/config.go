@@ -457,6 +457,9 @@ func (c *Config) Validate() error {
 			}
 			if r.Group != "" {
 				text(path+"group", r.Group)
+				if len(r.Group) > 256 {
+					add(path+"group", "must be at most 256 bytes")
+				}
 				identity := [2]string{r.Issuer, r.Group}
 				if groups[identity] {
 					add(strings.TrimSuffix(path, "."), "duplicate issuer/group pair")

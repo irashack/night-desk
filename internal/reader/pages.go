@@ -97,8 +97,8 @@ func (s *Server) base(r *http.Request) view {
 	p := current(r)
 	owner := sha256.Sum256([]byte(p.scope.Session().CSRF + "\x00" + p.paper.ID))
 	v := view{Paper: p.paper, CSRF: p.scope.Session().CSRF, Owner: base64.RawURLEncoding.EncodeToString(owner[:]), Base: p.base,
-		Editing: s.Editorial != nil && p.scope.BySubject() && p.scope.Default()}
-	if papers := p.scope.Papers(); len(papers) > 1 {
+		Editing: s.Editorial != nil && p.scope.CanEdit()}
+	if papers, refresh := p.scope.Papers(), p.scope.Refresh(); len(papers)+len(refresh) > 1 {
 		cfg := s.Config()
 		for i, a := range papers {
 			paper, ok := cfg.Paper(a.Paper)
@@ -110,6 +110,13 @@ func (s *Server) base(r *http.Request) view {
 				href = paperBase(a.Paper) + "/"
 			}
 			v.Papers = append(v.Papers, paperLink{Masthead: paper.Masthead, Href: href, Current: a.Paper == p.paper.ID})
+		}
+		// Group papers whose membership went stale lead to the stale page,
+		// which asks the reader to sign in again.
+		for _, id := range refresh {
+			if paper, ok := cfg.Paper(id); ok {
+				v.Papers = append(v.Papers, paperLink{Masthead: paper.Masthead, Href: paperBase(id) + "/"})
+			}
 		}
 	}
 	if s.Push != nil {
