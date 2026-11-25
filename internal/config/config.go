@@ -31,12 +31,14 @@ type Config struct {
 	Lean   Lean    `json:"lean"`
 }
 type Server struct {
-	Operator        Operator `json:"operator,omitempty"`
-	Listen          string   `json:"listen"`
-	PublicBaseURL   string   `json:"public_base_url"`
-	DataDir         string   `json:"data_dir"`
-	OIDC            OIDC     `json:"oidc"`
-	SessionLifetime string   `json:"session_lifetime"`
+	Operator      Operator `json:"operator,omitempty"`
+	Listen        string   `json:"listen"`
+	PublicBaseURL string   `json:"public_base_url"`
+	DataDir       string   `json:"data_dir"`
+	// Auth selects how readers sign in: oidc, proxy, local or none.
+	Auth            Auth   `json:"auth,omitzero"`
+	OIDC            OIDC   `json:"oidc,omitzero"`
+	SessionLifetime string `json:"session_lifetime"`
 	// GroupSessionLifetime bounds how long group membership read from the ID
 	// token at sign-in grants a paper: a member removed from the group loses
 	// that paper by then, whatever the session lifetime.
@@ -216,7 +218,7 @@ func Load(path string) (*Config, error) {
 	if c.Server.GroupSessionLifetime == "" {
 		c.Server.GroupSessionLifetime = "24h"
 	}
-	if c.Server.OIDC.Scopes == nil {
+	if c.Server.OIDC.Scopes == nil && c.AuthMode() == AuthOIDC {
 		c.Server.OIDC.Scopes = []string{"openid"}
 	}
 	if err := c.Validate(); err != nil {
@@ -238,7 +240,7 @@ func Load(path string) (*Config, error) {
 	if !filepath.IsAbs(c.Server.DataDir) {
 		c.Server.DataDir = filepath.Join(base, c.Server.DataDir)
 	}
-	if !filepath.IsAbs(c.Server.OIDC.ClientSecretFile) {
+	if c.Server.OIDC.ClientSecretFile != "" && !filepath.IsAbs(c.Server.OIDC.ClientSecretFile) {
 		c.Server.OIDC.ClientSecretFile = filepath.Join(base, c.Server.OIDC.ClientSecretFile)
 	}
 	if c.Server.Operator.KeyHashFile != "" && !filepath.IsAbs(c.Server.Operator.KeyHashFile) {
@@ -365,19 +367,26 @@ func (c *Config) Validate() error {
 		text("server.operator.key_hash_file", c.Server.Operator.KeyHashFile)
 	}
 	text("server.data_dir", c.Server.DataDir)
-	issuer("server.oidc.issuer", c.Server.OIDC.Issuer)
-	text("server.oidc.client_id", c.Server.OIDC.ClientID)
-	text("server.oidc.client_secret_file", c.Server.OIDC.ClientSecretFile)
-	scopes := map[string]bool{}
-	for i, s := range c.Server.OIDC.Scopes {
-		if s == "" || strings.ContainsFunc(s, func(r rune) bool { return r < 0x21 || r > 0x7e || r == '"' || r == '\\' }) || scopes[s] {
-			add(fmt.Sprintf("server.oidc.scopes[%d]", i), "must be a unique non-empty scope")
+	c.checkAuth(add)
+	mode := c.AuthMode()
+	if mode == AuthOIDC {
+		issuer("server.oidc.issuer", c.Server.OIDC.Issuer)
+		text("server.oidc.client_id", c.Server.OIDC.ClientID)
+		text("server.oidc.client_secret_file", c.Server.OIDC.ClientSecretFile)
+		scopes := map[string]bool{}
+		for i, s := range c.Server.OIDC.Scopes {
+			if s == "" || strings.ContainsFunc(s, func(r rune) bool { return r < 0x21 || r > 0x7e || r == '"' || r == '\\' }) || scopes[s] {
+				add(fmt.Sprintf("server.oidc.scopes[%d]", i), "must be a unique non-empty scope")
+			}
+			scopes[s] = true
 		}
-		scopes[s] = true
+		if !scopes["openid"] {
+			add("server.oidc.scopes", "must include openid")
+		}
+	} else if len(c.Server.OIDC.Scopes) > 0 {
+		add("server.oidc", "is only read when server.auth.mode is oidc; remove it")
 	}
-	if !scopes["openid"] {
-		add("server.oidc.scopes", "must include openid")
-	}
+	readerIssuer := c.ReaderIssuer()
 	d, e := time.ParseDuration(c.Server.SessionLifetime)
 	if e != nil || d <= 0 {
 		add("server.session_lifetime", "must be a positive duration")
@@ -444,7 +453,20 @@ func (c *Config) Validate() error {
 		groups := map[[2]string]bool{}
 		for j, r := range p.Readers {
 			path := fmt.Sprintf("%sreaders[%d].", b, j)
-			issuer(path+"issuer", r.Issuer)
+			switch {
+			case mode == AuthNone:
+				add(strings.TrimSuffix(path, "."), "server.auth.mode none has one reader, who reads every paper; remove readers")
+				continue
+			case readerIssuer == "":
+				issuer(path+"issuer", r.Issuer)
+			case r.Issuer == "" || r.Issuer == readerIssuer:
+				// Proxy and local readers name only a user or group; the
+				// mode's issuer is filled in, so sessions match them.
+				c.Papers[i].Readers[j].Issuer = readerIssuer
+				r.Issuer = readerIssuer
+			default:
+				add(path+"issuer", "must be omitted when server.auth.mode is "+mode)
+			}
 			set := 0
 			for _, v := range []string{r.Subject, r.SubjectFile, r.Group} {
 				if v != "" {
@@ -456,6 +478,12 @@ func (c *Config) Validate() error {
 				continue
 			}
 			if r.Group != "" {
+				switch {
+				case mode == AuthLocal:
+					add(path+"group", "local accounts have no groups; name each reader's subject, or leave readers empty so every account reads the paper")
+				case mode == AuthProxy && c.Server.Auth.Proxy.GroupsHeader == "":
+					add(path+"group", "needs server.auth.proxy.groups_header")
+				}
 				text(path+"group", r.Group)
 				if len(r.Group) > 256 {
 					add(path+"group", "must be at most 256 bytes")

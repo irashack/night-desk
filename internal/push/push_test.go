@@ -176,7 +176,7 @@ func setup(t *testing.T, client *http.Client) *desk {
 	if err = db.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{Server: config.Server{PublicBaseURL: "https://paper.example.com/"}, Papers: []config.Paper{
+	cfg := &config.Config{Server: config.Server{Auth: config.Auth{Mode: config.AuthOIDC}, PublicBaseURL: "https://paper.example.com/"}, Papers: []config.Paper{
 		{ID: "daily", Sections: []config.Section{{Key: "news", Title: "News"}}, Readers: []config.Reader{{Issuer: "https://id.example.com", Subject: "one"}, {Issuer: "https://id.example.com", Subject: "two"}}},
 		{ID: "other", Sections: []config.Section{{Key: "news", Title: "News"}}, Readers: []config.Reader{{Issuer: "https://id.example.com", Subject: "three"}}},
 	}}

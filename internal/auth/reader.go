@@ -107,7 +107,40 @@ var ErrUnmapped = errors.New("no paper for reader")
 // Readable lists the papers an identity reads under cfg: the first paper that
 // names its subject (the same first-match rule as before group readers), then
 // every paper with a group reader for one of groups.
+//
+// Without sign-in (server.auth.mode none) the one reader reads every paper.
+// A local account also reads every paper whose readers list is empty: its
+// first such paper is its own unless a paper names it.
 func Readable(cfg *config.Config, issuer, subject string, groups []string) []Access {
+	var out []Access
+	mode := cfg.AuthMode()
+	if !cfg.AcceptsIssuer(issuer) {
+		return nil
+	}
+	if mode == config.AuthNone {
+		if subject != config.NoneSubject {
+			return nil
+		}
+		for i, paper := range cfg.Papers {
+			out = append(out, Access{Paper: paper.ID, BySubject: i == 0})
+		}
+		return out
+	}
+	out = configured(cfg, issuer, subject, groups)
+	if mode == config.AuthLocal {
+		own := len(out) > 0 && out[0].BySubject
+		for _, paper := range cfg.Papers {
+			if len(paper.Readers) == 0 && !slices.ContainsFunc(out, func(a Access) bool { return a.Paper == paper.ID }) {
+				out = append(out, Access{Paper: paper.ID, BySubject: !own})
+				own = true
+			}
+		}
+	}
+	return out
+}
+
+// configured applies the papers' readers lists.
+func configured(cfg *config.Config, issuer, subject string, groups []string) []Access {
 	var out []Access
 	seen := map[string]bool{}
 subjects:
@@ -142,6 +175,10 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 	}
 	session, err := lookup.Session(ctx, sha256.Sum256([]byte(token)))
 	if err != nil || !session.Expires.After(now) {
+		return ReaderScope{}, ErrUnauthorized
+	}
+	if !cfg.AcceptsIssuer(session.Issuer) {
+		// Signed in under another server.auth.mode.
 		return ReaderScope{}, ErrUnauthorized
 	}
 	// Group membership holds as of sign-in, and only for the group lifetime.

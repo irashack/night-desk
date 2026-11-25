@@ -112,6 +112,9 @@ func (s *Scheduler) Tick(ctx context.Context) {
 // prune applies every paper's retention to its candidate snapshots, whether or
 // not the paper has a deadline or a running worker.
 func (s *Scheduler) prune(ctx context.Context) {
+	if err := s.Store.PruneSessions(ctx, s.now()); err != nil && s.Log != nil {
+		s.Log.Error("session pruning failed")
+	}
 	for _, p := range s.Config().Papers {
 		if ctx.Err() != nil {
 			return

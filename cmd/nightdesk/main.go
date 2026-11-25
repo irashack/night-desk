@@ -32,6 +32,7 @@ var commands = []command{
 	{"serve", "run the server: agent API, reader, scheduler and webhook delivery", backendCommand("serve")},
 	{"migrate", "apply the embedded, forward-only database migrations", backendCommand("migrate")},
 	{"key", "issue, list or revoke paper-scoped keys", backendCommand("key")},
+	{"accounts", "list local accounts, or create an invite or password-reset link", backendCommand("accounts")},
 	{"backup", "write a consistent copy of the database and image store", backendCommand("backup")},
 	{"quality", "print the operator quality report", backendCommand("quality")},
 	{"gather", "run the gathering and drafting worker", gatherCommand},
@@ -92,7 +93,7 @@ func usage(w io.Writer) {
 		fmt.Fprintf(w, "  %-*s  %s\n", width, c.name, c.summary)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "serve, migrate, key, backup and quality read --config FILE (default nightdesk.yaml;")
+	fmt.Fprintln(w, "serve, migrate, key, accounts, backup and quality read --config FILE (default nightdesk.yaml;")
 	fmt.Fprintln(w, "serve requires it). The README and docs/install.md describe each subcommand.")
 }
 

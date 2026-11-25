@@ -13,7 +13,7 @@ import (
 
 func groupConfig() *config.Config {
 	const id = "https://id.example"
-	return &config.Config{Server: config.Server{GroupSessionLifetime: "24h"}, Papers: []config.Paper{
+	return &config.Config{Server: config.Server{Auth: config.Auth{Mode: config.AuthOIDC}, GroupSessionLifetime: "24h"}, Papers: []config.Paper{
 		{ID: "own", Readers: []config.Reader{{Issuer: id, Subject: "reader-one"}}},
 		{ID: "second", Readers: []config.Reader{{Issuer: id, Subject: "reader-one"}}},
 		{ID: "shared", Readers: []config.Reader{{Issuer: id, Group: "family"}, {Issuer: id, Group: "friends"}}},
@@ -110,7 +110,7 @@ func TestGroupMembershipExpires(t *testing.T) {
 	if _, err = AuthenticateReader(context.Background(), lookup, cfg, token, later, time.Hour); err != ErrUnauthorized {
 		t.Fatal("stale unmapped session", err)
 	}
-	plain := &config.Config{Papers: cfg.Papers[:2]}
+	plain := &config.Config{Server: config.Server{Auth: config.Auth{Mode: config.AuthOIDC}}, Papers: cfg.Papers[:2]}
 	if _, err = AuthenticateReader(context.Background(), lookup, plain, token, later.Add(600*time.Hour), 720*time.Hour); err != ErrUnmapped {
 		t.Fatal("unmapped behavior changed without group readers", err)
 	}
@@ -157,7 +157,7 @@ func TestUncheckedGroupsAskForSignIn(t *testing.T) {
 		t.Fatal("stale session", scope.Refresh(), err)
 	}
 	// Without group readers in the configuration nothing changes.
-	plain := &config.Config{Papers: cfg.Papers[:2]}
+	plain := &config.Config{Server: config.Server{Auth: config.Auth{Mode: config.AuthOIDC}}, Papers: cfg.Papers[:2]}
 	lookup.session.GroupsChecked = false
 	if scope, err = AuthenticateReader(context.Background(), lookup, plain, token, now, time.Hour); err != nil || scope.NeedsSignIn("shared") {
 		t.Fatal("no group readers", err)

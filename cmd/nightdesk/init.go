@@ -82,18 +82,30 @@ func standalone(args []string, out, errOut io.Writer) int {
 	paper := flags.String("paper", "daily", "paper ID")
 	masthead := flags.String("masthead", "The Daily", "paper masthead")
 	timezone := flags.String("timezone", "UTC", "IANA timezone")
+	mode := flags.String("auth", config.AuthLocal, "reader sign-in: local, oidc, proxy or none")
+	publicURL := flags.String("public-url", "http://localhost:8080", "the address readers open (https, or http on localhost)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
 	if *dir == "" || flags.NArg() != 0 {
-		fmt.Fprintln(errOut, "usage: nightdesk init --dir PATH [--paper ID --masthead NAME --timezone TZ]")
+		fmt.Fprintln(errOut, "usage: nightdesk init --dir PATH [--paper ID --masthead NAME --timezone TZ --auth local|oidc|proxy|none --public-url URL]")
 		return 2
 	}
-	if err := initialize(*dir, *paper, *masthead, *timezone); err != nil {
+	if err := initialize(*dir, initOptions{paper: *paper, masthead: *masthead, timezone: *timezone, mode: *mode, publicURL: *publicURL}); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
-	fmt.Fprintln(out, "Created config.yaml, nightdesk.db, agent.key and vapid.key. Edit the OIDC placeholders before serving.")
+	fmt.Fprintln(out, "Created config.yaml, nightdesk.db, agent.key and vapid.key.")
+	switch *mode {
+	case config.AuthOIDC:
+		fmt.Fprintln(out, "Edit the OIDC placeholders and add your reader identity before serving.")
+	case config.AuthProxy:
+		fmt.Fprintln(out, "Set server.auth.proxy.trusted_proxies to your proxy's address and add your readers before serving.")
+	case config.AuthLocal:
+		fmt.Fprintln(out, "Serve it, then open "+strings.TrimRight(*publicURL, "/")+"/setup with the setup code from the log to create your account.")
+	case config.AuthNone:
+		fmt.Fprintln(out, "Serve it and open "+*publicURL+". There is no sign-in: keep it on a private network.")
+	}
 	return 0
 }
 
@@ -110,12 +122,16 @@ func placeholders(c *config.Config) []string {
 		}
 	}
 	placeholderHost("server.public_base_url", c.Server.PublicBaseURL)
-	placeholderHost("server.oidc.issuer", c.Server.OIDC.Issuer)
-	if strings.HasPrefix(c.Server.OIDC.ClientID, "REPLACE_") {
-		found = append(found, "server.oidc.client_id: replace "+c.Server.OIDC.ClientID+" with your provider's client ID")
+	mode := c.AuthMode()
+	if mode == config.AuthOIDC {
+		placeholderHost("server.oidc.issuer", c.Server.OIDC.Issuer)
+		if strings.HasPrefix(c.Server.OIDC.ClientID, "REPLACE_") {
+			found = append(found, "server.oidc.client_id: replace "+c.Server.OIDC.ClientID+" with your provider's client ID")
+		}
 	}
 	for i, p := range c.Papers {
-		if len(p.Readers) == 0 {
+		// Local accounts read papers without readers; none has one reader.
+		if len(p.Readers) == 0 && (mode == config.AuthOIDC || mode == config.AuthProxy) {
 			found = append(found, fmt.Sprintf("papers[%d].readers: add at least one verified reader identity", i))
 		}
 		for j, r := range p.Readers {
@@ -125,14 +141,61 @@ func placeholders(c *config.Config) []string {
 	return found
 }
 
-func initialize(dir, paper, masthead, timezone string) error {
-	const issuer = "https://identity.example.invalid"
+type initOptions struct {
+	paper, masthead, timezone, mode, publicURL string
+}
+
+// authYAML is the server.auth (and server.oidc) part of a new configuration.
+func authYAML(mode string) (string, error) {
+	switch mode {
+	case config.AuthLocal:
+		return `  auth:
+    mode: local # password accounts; the first is created at /setup
+    local:
+      passkeys: true
+`, nil
+	case config.AuthOIDC:
+		return `  auth:
+    mode: oidc
+  oidc:
+    issuer: https://identity.example.invalid # REPLACE with your provider's issuer
+    client_id: REPLACE_WITH_OIDC_CLIENT_ID
+    client_secret_file: oidc-client-secret # Create separately; never commit secrets
+`, nil
+	case config.AuthProxy:
+		return `  auth:
+    mode: proxy
+    proxy:
+      user_header: Remote-User
+      # groups_header: Remote-Groups
+      trusted_proxies: ["127.0.0.1/32"] # REPLACE with your reverse proxy's address
+`, nil
+	case config.AuthNone:
+		return `  auth:
+    mode: none # no sign-in: one reader, on a private network only
+`, nil
+	}
+	return "", fmt.Errorf("--auth must be one of local, oidc, proxy, none")
+}
+
+func initialize(dir string, o initOptions) error {
+	paper, masthead, timezone := o.paper, o.masthead, o.timezone
+	if o.mode == "" {
+		o.mode = config.AuthLocal
+	}
+	if o.publicURL == "" {
+		o.publicURL = "http://localhost:8080"
+	}
+	authText, err := authYAML(o.mode)
+	if err != nil {
+		return err
+	}
 	zero := 0.0
 	c := config.Config{
 		Server: config.Server{
-			Listen: "0.0.0.0:8080", PublicBaseURL: "https://paper.example.invalid", DataDir: ".",
+			Listen: "0.0.0.0:8080", PublicBaseURL: o.publicURL, DataDir: ".",
 			SessionLifetime: "720h",
-			OIDC:            config.OIDC{Issuer: issuer, ClientID: "REPLACE_WITH_OIDC_CLIENT_ID", ClientSecretFile: "oidc-client-secret", Scopes: []string{"openid"}},
+			Auth:            config.Auth{Mode: o.mode},
 		},
 		Papers: []config.Paper{{
 			ID: paper, Masthead: masthead, Look: "broadsheet", Timezone: timezone,
@@ -140,6 +203,17 @@ func initialize(dir, paper, masthead, timezone string) error {
 			Sections: []config.Section{{Key: "news", Title: "News", Required: true}},
 			Readers:  []config.Reader{},
 		}},
+	}
+	switch o.mode {
+	case config.AuthOIDC:
+		c.Server.OIDC = config.OIDC{Issuer: "https://identity.example.invalid", ClientID: "REPLACE_WITH_OIDC_CLIENT_ID", ClientSecretFile: "oidc-client-secret", Scopes: []string{"openid"}}
+	case config.AuthProxy:
+		c.Server.Auth.Proxy = config.ProxyAuth{UserHeader: "Remote-User", TrustedProxies: []string{"127.0.0.1/32"}}
+	case config.AuthLocal:
+		c.Server.Auth.Local.Passkeys = true
+	case config.AuthNone:
+		// A container's 0.0.0.0 is checked when serving, not here.
+		c.Server.Listen = "127.0.0.1:8080"
 	}
 	if err := c.Validate(); err != nil {
 		return err
@@ -182,16 +256,21 @@ func initialize(dir, paper, masthead, timezone string) error {
 	}
 	// Quoted user values remain scalar YAML strings, including punctuation and
 	// Unicode. The template contains no credentials or guessed reader identity.
-	text := fmt.Sprintf(`# Replace the example.invalid public URL and OIDC placeholders before serving.
+	readers := "    # Every local account reads a paper whose readers list is empty;\n    # name usernames here to limit it: [{subject: alice}]\n    readers: []\n"
+	switch o.mode {
+	case config.AuthOIDC:
+		readers = "    # Add verified OIDC identities: [{issuer: \"https://your-issuer\", subject: \"your-subject\"}]\n    readers: []\n"
+	case config.AuthProxy:
+		readers = "    # Add the users your proxy signs in: [{subject: alice}] or [{group: family}]\n    readers: []\n"
+	case config.AuthNone:
+		readers = ""
+	}
+	text := fmt.Sprintf(`# Night Desk configuration. docs/configuration.md describes every setting.
 server:
-  listen: "0.0.0.0:8080"
-  public_base_url: https://paper.example.invalid
+  listen: %q
+  public_base_url: %q # the address readers open: https, or http on localhost
   data_dir: .
-  oidc:
-    issuer: https://identity.example.invalid # REPLACE with your provider's issuer
-    client_id: REPLACE_WITH_OIDC_CLIENT_ID
-    client_secret_file: oidc-client-secret # Create separately; never commit secrets
-papers:
+%spapers:
   - id: %q
     masthead: %q
     look: broadsheet
@@ -203,9 +282,7 @@ papers:
       - key: news
         title: News
         required: true
-    # Add verified OIDC identities: [{issuer: "https://your-issuer", subject: "your-subject"}]
-    readers: []
-`, paper, masthead, timezone)
+%s`, c.Server.Listen, o.publicURL, authText, paper, masthead, timezone, readers)
 	if _, err := io.WriteString(files["config.yaml"], text); err != nil {
 		return err
 	}

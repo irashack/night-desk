@@ -150,3 +150,17 @@ func (s *Store) ReaderFeedback(ctx context.Context, scope auth.ReaderScope, date
 	}
 	return result, rows.Err()
 }
+
+// PruneSessions deletes expired sessions. Their push subscriptions stay, as
+// before: a reader keeps notifications until they sign out or lose the paper.
+func (s *Store) PruneSessions(ctx context.Context, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE julianday(expires_at)<=julianday(?)`, now.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// CountSessions reports how many sessions are stored.
+func (s *Store) CountSessions(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sessions`).Scan(&n)
+	return n, err
+}
