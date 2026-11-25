@@ -29,7 +29,10 @@
   };
   all('[data-mode-choice]').forEach((b) => b.addEventListener('click', () => { setMode(b.dataset.modeChoice); remember('mode', mode); }));
   setMode(mode);
-  const book = $('#book'), pages = all('.page'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const book = $('#book'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  // Only an edition's book has turnable pages; a story page's article is one too
+  // by class, for its type, but has no page bar to collect.
+  const pages = book ? [...book.querySelectorAll('.page')] : [];
   let layout = read('layout'), cur = 0, busy = false;
   if (!['pages', 'list', 'reader'].includes(layout)) layout = 'pages';
   const bars = pages.map((p) => p.querySelector('.turnbar'));
