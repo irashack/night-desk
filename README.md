@@ -41,10 +41,9 @@ OpenAI-compatible API, or Claude).
   briefs, and the look of a broadsheet: Pages, List and Reader layouts in light,
   sepia and dark.
 - **Agents at the depth you choose.** `author`: your agent picks, writes and
-  publishes. `reviewer`: Night Desk drafts with the models you configure (any
-  OpenAI-compatible API or Claude) and your agent approves, edits, cuts or sends
-  back. `none`: Night Desk drafts with your models and publishes on schedule, with
-  no agent involved.
+  publishes. `reviewer`: Night Desk drafts and your agent reviews.
+  `none`: Night Desk drafts and publishes on schedule. Both roles can use
+  configured models or build editions from feed headlines and source excerpts.
 - **Checked against its sources.** Before an edition is published, code (not a
   model) compares its numbers, names and quotes with the stored snapshots of the
   articles it cites, and flags repeats, wire copy and claims it cannot find. The
@@ -111,7 +110,7 @@ agent publishes an edition (the install guide has a one-line
 [sample edition](docs/install.md#first-paper) to check the reader first); see [Integrating an agent](integrations/README.md).
 For Night Desk to write the paper on its own, add sources to its sections, set
 `agent_role: none` and a `deadline`, and run the
-[gathering worker with a model](docs/install.md#gathering-and-optional-models).
+[gathering worker](docs/install.md#gathering-and-optional-models).
 
 The [install guide](docs/install.md) covers every step, including Podman, the
 gathering worker, models, backups and upgrades. Prefer a binary? Each

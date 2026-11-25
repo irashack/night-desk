@@ -196,7 +196,7 @@ together. See [the upgrade promise](upgrading.md).
 
 ## Gathering and optional models
 
-Gathering and model drafting run in a **second container** from the same image.
+Gathering and drafting run in a **second container** from the same image.
 The worker talks to the server over HTTPS with its own paper-scoped key and never
 opens the database. Keep its files in a directory of their own, outside
 `$NIGHTDESK_DIR`, and issue its key on the server; `key issue` prints the secret
@@ -226,7 +226,7 @@ config (`worker.yaml`, below) in the same directory:
   --interval 30m
 ```
 
-Leave out `--worker-config` to gather without drafting. `--once` runs a single
+Leave out `--worker-config` to run without models. `--once` runs a single
 pass and exits; `--interval` (default `30m`) sets the time between passes.
 `--server` must be an HTTPS origin; HTTP is accepted only on loopback
 (`localhost`, `127.0.0.1`, `::1`) for a local development server. Mount only the
@@ -243,9 +243,10 @@ finds under 280 characters, the worker tries the page's JSON-LD `articleBody`, t
 its AMP version. Per-host counts of outcomes, cool-offs and extraction methods
 appear in `nightdesk quality` and on the operator page.
 
-A worker config is optional and is never read by `serve`. Without `models`, the
-worker only gathers; with both tiers it also drafts `reviewer` and `none` papers
-that have a `deadline`, inside the paper's `draft_lead` (default 90m). If the
+A worker config is optional and is never read by `serve`. The worker drafts
+`reviewer` and `none` papers with a `deadline` during `draft_lead` (default 90m).
+Without `models`, it uses gathered headlines, short source excerpts and links.
+Every required section needs a story before the draft can be submitted. If the
 deadline passes with nothing drafted (the worker was down, say), the run is
 *missed*; until local midnight the worker may still draft a late edition, and the
 deadline policy then applies to it as at the deadline: a `none` paper publishes it,

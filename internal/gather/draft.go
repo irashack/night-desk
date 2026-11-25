@@ -16,6 +16,7 @@ import (
 	"github.com/irashack/night-desk/internal/candidate"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/drafting"
+	"github.com/irashack/night-desk/internal/edition"
 	"github.com/irashack/night-desk/internal/model"
 	"github.com/irashack/night-desk/internal/prompts"
 	"github.com/irashack/night-desk/internal/scheduler"
@@ -24,7 +25,7 @@ import (
 )
 
 // DraftConfig belongs only to the worker. Model keys never enter server config.
-// Models omitted means gathering only; all paths are relative to this file.
+// Models omitted enables feeds-only drafting; all paths are relative to this file.
 type DraftConfig struct {
 	Models  *model.Config       `json:"models,omitempty"`
 	Tracing model.TracingConfig `json:"tracing,omitempty"`
@@ -97,9 +98,6 @@ func workerConfigProblem(prefix string, err error) error {
 // start on the preceding local date. The server leases each attempt and reserves
 // its spending; this HTTP-only worker never approves or publishes.
 func (w *Worker) DraftOnce(ctx context.Context, c DraftConfig, options model.Options, now time.Time) (bool, error) {
-	if c.Models == nil {
-		return false, nil
-	}
 	var p struct {
 		config.Paper
 		ReaderNotes string `json:"reader_notes"`
@@ -148,7 +146,10 @@ func (w *Worker) DraftOnce(ctx context.Context, c DraftConfig, options model.Opt
 		}
 	}
 	limits := c.Limits
-	if limits == (model.Limits{}) {
+	if c.Models == nil {
+		// The claim API requires both reservation limits to be positive.
+		limits = model.Limits{MaxCalls: 1, MaxTokens: 1}
+	} else if limits == (model.Limits{}) {
 		limits = model.Limits{MaxCalls: 12, MaxTokens: 100000}
 	}
 	var lease store.DraftLease
@@ -177,6 +178,11 @@ func (w *Worker) DraftOnce(ctx context.Context, c DraftConfig, options model.Opt
 			if errors.As(err, &status) && status == http.StatusConflict {
 				return false, nil
 			}
+			// A worker without models used to only gather, so its key may
+			// lack the draft capability: then it keeps only gathering.
+			if c.Models == nil && errors.As(err, &status) && status == http.StatusForbidden {
+				return false, nil
+			}
 			return false, err
 		}
 		leased = true
@@ -189,7 +195,7 @@ func (w *Worker) DraftOnce(ctx context.Context, c DraftConfig, options model.Opt
 			return false, err
 		}
 	}
-	candidates, err := w.draftCandidates(ctx, p.Paper)
+	candidates, err := w.draftCandidates(ctx, p.Paper, c.Models == nil)
 	if err != nil {
 		return false, err
 	}
@@ -215,16 +221,23 @@ func (w *Worker) DraftOnce(ctx context.Context, c DraftConfig, options model.Opt
 	// Never start a model call that can outlive the server's exclusive lease.
 	attemptCtx, cancel := context.WithDeadline(ctx, lease.ExpiresAt)
 	defer cancel()
-	run, err = model.NewRun(*c.Models, model.Limits{MaxCalls: lease.Remaining.MaxCalls, MaxTokens: lease.Remaining.MaxTokens}, options)
+	var ed edition.Edition
+	var spend store.DraftSpend
+	if c.Models == nil {
+		ed, _, err = drafting.FeedsOnly(paper, candidates)
+	} else {
+		run, err = model.NewRun(*c.Models, model.Limits{MaxCalls: lease.Remaining.MaxCalls, MaxTokens: lease.Remaining.MaxTokens}, options)
+		if err != nil {
+			return false, err
+		}
+		ed, _, err = drafting.Draft(attemptCtx, drafting.Models{Fast: run.Fast, Writer: run.Writer, Prompts: prompts.New(c.Prompts.Directory)}, paper, p.ReaderNotes, candidates, deadline, editorNote)
+		spent := run.Budget.Spending()
+		spend = store.DraftSpend{Calls: spent.Calls, Tokens: spent.Tokens, CostMicros: spent.CostMicros}
+	}
 	if err != nil {
 		return false, err
 	}
-	ed, _, err := drafting.Draft(attemptCtx, drafting.Models{Fast: run.Fast, Writer: run.Writer, Prompts: prompts.New(c.Prompts.Directory)}, paper, p.ReaderNotes, candidates, deadline, editorNote)
-	if err != nil {
-		return false, err
-	}
-	spend := run.Budget.Spending()
-	body, err := json.Marshal(map[string]any{"lease_id": lease.ID, "outcome": "submitted", "spend": store.DraftSpend{Calls: spend.Calls, Tokens: spend.Tokens, CostMicros: spend.CostMicros}, "expected_revision": existing.Revision, "draft": ed})
+	body, err := json.Marshal(map[string]any{"lease_id": lease.ID, "outcome": "submitted", "spend": spend, "expected_revision": existing.Revision, "draft": ed})
 	if err != nil {
 		return false, errors.New("draft encoding failed")
 	}
@@ -280,9 +293,9 @@ const (
 )
 
 // draftCandidates reads newest-first pages independently for each section. The
-// selected model input has hard count and UTF-8 text bounds, regardless of how
-// much retained candidate history exists. Aliases stay provenance, not prose.
-func (w *Worker) draftCandidates(ctx context.Context, p config.Paper) ([]drafting.Candidate, error) {
+// selection has hard count bounds and model input also has UTF-8 byte bounds.
+// Feeds-only drafting uses the stored text to keep excerpt boundaries intact.
+func (w *Worker) draftCandidates(ctx context.Context, p config.Paper, feedsOnly bool) ([]drafting.Candidate, error) {
 	out := []drafting.Candidate{}
 	if len(p.Sections) == 0 {
 		return out, nil
@@ -314,7 +327,10 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper) ([]draftin
 				if c.State != "ok" || c.Repeat || c.Section != section.Key || !strings.HasPrefix(c.CanonicalURL, "https://") {
 					continue
 				}
-				text := capText(c.Text, min(itemBytes, sectionBytes-used, maxDraftTextBytes-totalBytes))
+				text := c.Text
+				if !feedsOnly {
+					text = capText(text, min(itemBytes, sectionBytes-used, maxDraftTextBytes-totalBytes))
+				}
 				if text == "" {
 					continue
 				}
@@ -323,8 +339,10 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper) ([]draftin
 					d.WireGroup = *c.WireGroup
 				}
 				out = append(out, d)
-				used += len(text)
-				totalBytes += len(text)
+				if !feedsOnly {
+					used += len(text)
+					totalBytes += len(text)
+				}
 				count++
 				if count >= sectionCount || used >= sectionBytes || len(out) >= maxDraftCandidates || totalBytes >= maxDraftTextBytes {
 					break

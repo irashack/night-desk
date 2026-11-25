@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/irashack/night-desk/internal/sourcecheck"
 	"net/url"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/irashack/night-desk/internal/edition"
 	"github.com/irashack/night-desk/internal/model"
 	"github.com/irashack/night-desk/internal/prompts"
+	"github.com/irashack/night-desk/internal/sourcecheck"
 )
 
 // Models holds the two configured tiers. Clients should share a per-run budget.
@@ -86,6 +86,9 @@ func Draft(ctx context.Context, m Models, p Paper, notes string, candidates []Ca
 	if err := validateInput(p, candidates); err != nil {
 		return empty, nil, err
 	}
+	if len(candidates) == 0 {
+		return empty, nil, fmt.Errorf("candidates: must contain at least one candidate")
+	}
 	if p.Timezone != "" {
 		loc, err := time.LoadLocation(p.Timezone)
 		if err != nil {
@@ -142,6 +145,10 @@ func Draft(ctx context.Context, m Models, p Paper, notes string, candidates []Ca
 	}
 	problems := constrain(&e, candidates)
 	attachSources(&e, candidates, stories.Groups)
+	return validateDraft(e, p, problems)
+}
+
+func validateDraft(e edition.Edition, p Paper, problems []Problem) (edition.Edition, []Problem, error) {
 	rules := edition.PaperRules{Limits: p.Limits}
 	for _, s := range p.Sections {
 		rules.Sections = append(rules.Sections, edition.SectionRule{Key: s.Key, Required: s.Required})
@@ -219,9 +226,6 @@ func validateInput(p Paper, candidates []Candidate) error {
 			return fmt.Errorf("paper.sections[%d].key: must be unique", i)
 		}
 		sections[s.Key] = true
-	}
-	if len(candidates) == 0 {
-		return fmt.Errorf("candidates: must contain at least one candidate")
 	}
 	ids := make(map[string]bool, len(candidates))
 	for i, c := range candidates {
@@ -363,10 +367,8 @@ func constrain(e *edition.Edition, candidates []Candidate) []Problem {
 	return problems
 }
 
-// attachSources replaces model-authored coverage with candidate provenance.
-// Union story groups, wire copies and shared aliases, then copy URLs in input
-// order: other canonical coverage first, aliases second, at most twelve sources.
-func attachSources(e *edition.Edition, candidates []Candidate, groups [][]string) {
+// storyGroups joins wire copies, shared URLs (including aliases), and explicit groups.
+func storyGroups(candidates []Candidate, groups [][]string) ([]int, map[string]int) {
 	parent := make([]int, len(candidates))
 	for i := range parent {
 		parent[i] = i
@@ -404,6 +406,16 @@ func attachSources(e *edition.Edition, candidates []Candidate, groups [][]string
 			union(ids[g[0]], ids[g[i]])
 		}
 	}
+	for i := range parent {
+		parent[i] = root(i)
+	}
+	return parent, urls
+}
+
+// attachSources replaces model-authored coverage with candidate provenance.
+// Copy URLs in input order: other canonical coverage first, then aliases.
+func attachSources(e *edition.Edition, candidates []Candidate, groups [][]string) {
+	parents, urls := storyGroups(candidates, groups)
 	for si := range e.Sections {
 		for ii := range e.Sections[si].Items {
 			item := &e.Sections[si].Items[ii]
@@ -437,12 +449,12 @@ func attachSources(e *edition.Edition, candidates []Candidate, groups [][]string
 				seen[u] = true
 			}
 			for j, c := range candidates {
-				if root(j) == root(index) {
+				if parents[j] == parents[index] {
 					add(c, c.URL)
 				}
 			}
 			for j, c := range candidates {
-				if root(j) == root(index) {
+				if parents[j] == parents[index] {
 					for _, u := range c.Aliases {
 						add(c, u)
 					}

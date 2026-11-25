@@ -233,12 +233,7 @@ limits:
 	if err != nil || c.Models != nil {
 		t.Fatal(c, err)
 	}
-	// No configured models means no drafting-related network traffic.
-	worker := &Worker{}
-	drafted, err := worker.DraftOnce(context.Background(), c, model.Options{}, time.Now())
-	if err != nil || drafted {
-		t.Fatal(drafted, err)
-	}
+
 }
 
 func TestDraftCandidatesBoundedPagesAndSections(t *testing.T) {
@@ -268,7 +263,7 @@ func TestDraftCandidatesBoundedPagesAndSections(t *testing.T) {
 	}))
 	defer api.Close()
 	worker, _ := New(api.URL, "key", nil)
-	selected, err := worker.draftCandidates(context.Background(), p)
+	selected, err := worker.draftCandidates(context.Background(), p, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +308,7 @@ func TestDraftCandidatesShareSectionBudget(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]any{"candidates": list})
 		}))
 		worker, _ := New(api.URL, "key", nil)
-		selected, err := worker.draftCandidates(context.Background(), p)
+		selected, err := worker.draftCandidates(context.Background(), p, false)
 		api.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -429,6 +424,102 @@ func TestWorkerReportsModelAndSubmissionFailures(t *testing.T) {
 				if calls != 0 || len(reports) != 0 {
 					t.Fatal(calls, reports)
 				}
+			}
+		})
+	}
+}
+
+func TestDraftOnceWithoutModels(t *testing.T) {
+	for _, tc := range []struct {
+		name, role string
+		missing    bool
+		forbidden  bool // a gather-only key, without the draft capability
+	}{
+		{name: "none", role: "none"},
+		{name: "reviewer", role: "reviewer"},
+		{name: "required section empty", role: "none", missing: true},
+		{name: "gather-only key", role: "none", forbidden: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const date = "2026-10-30"
+			var claimed, reported bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method + " " + r.URL.Path {
+				case "GET /api/v1/paper":
+					sections := []config.Section{{Key: "local", Required: true}}
+					if tc.missing {
+						sections = append(sections, config.Section{Key: "world", Required: true})
+					}
+					json.NewEncoder(w).Encode(map[string]any{
+						"agent_role": tc.role, "deadline": "06:30", "timezone": "UTC", "sections": sections,
+					})
+				case "GET /api/v1/drafts/" + date:
+					w.WriteHeader(http.StatusNotFound)
+				case "GET /api/v1/candidates":
+					var pool []candidate.Candidate
+					if r.URL.Query().Get("section") == "local" {
+						pool = []candidate.Candidate{{
+							ID: 1, Section: "local", State: "ok", Title: "A local report", Text: "The library reopened. Readers returned.",
+							Outlet: "Desk", CanonicalURL: "https://example.com/report",
+						}}
+					}
+					json.NewEncoder(w).Encode(map[string]any{"candidates": pool})
+				case "POST /api/v1/runs/" + date + "/claim":
+					if tc.forbidden {
+						w.WriteHeader(http.StatusForbidden)
+						fmt.Fprint(w, `{"error":"forbidden"}`)
+						return
+					}
+					var budget store.DraftBudget
+					if err := json.NewDecoder(r.Body).Decode(&budget); err != nil || budget != (store.DraftBudget{MaxCalls: 1, MaxTokens: 1}) {
+						t.Errorf("unexpected claim: %+v, %v", budget, err)
+					}
+					claimed = true
+					json.NewEncoder(w).Encode(store.DraftLease{ID: "lease", ExpiresAt: time.Now().Add(time.Hour), Remaining: budget})
+				case "POST /api/v1/runs/" + date + "/report":
+					var report struct {
+						LeaseID string           `json:"lease_id"`
+						Outcome string           `json:"outcome"`
+						Draft   *edition.Edition `json:"draft"`
+						Spend   store.DraftSpend `json:"spend"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+						t.Error(err)
+					}
+					if !claimed || reported || report.LeaseID != "lease" || report.Spend != (store.DraftSpend{}) {
+						t.Errorf("unexpected report: %+v", report)
+					}
+					reported = true
+					if tc.missing {
+						if report.Outcome != "failed" || report.Draft != nil {
+							t.Errorf("unexpected failure report: %+v", report)
+						}
+					} else if report.Outcome != "submitted" || report.Draft == nil || len(report.Draft.Sections) != 1 || len(report.Draft.Sections[0].Items) != 1 {
+						t.Errorf("unexpected submission: %+v", report)
+					} else if item := report.Draft.Sections[0].Items[0]; item.ID != report.Draft.Lead || item.Title != "A local report" ||
+						item.Summary != "The library reopened. Readers returned." || item.Source != "Desk" || item.URL != "https://example.com/report" {
+						t.Errorf("unexpected item: %+v", item)
+					}
+					fmt.Fprint(w, `{"revision":1}`)
+				default:
+					t.Errorf("unexpected request %s %s", r.Method, r.URL)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+			worker, err := New(server.URL, "worker-key", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drafted, err := worker.DraftOnce(context.Background(), DraftConfig{}, model.Options{}, time.Date(2026, 10, 30, 6, 0, 0, 0, time.UTC))
+			if tc.forbidden {
+				if drafted || err != nil || reported {
+					t.Fatalf("gather-only key: drafted = %v, error = %v, reported = %v", drafted, err, reported)
+				}
+				return
+			}
+			if drafted == tc.missing || (err != nil) != tc.missing || !reported {
+				t.Fatalf("drafted = %v, error = %v, reported = %v", drafted, err, reported)
 			}
 		})
 	}
