@@ -74,7 +74,13 @@ func (s *Store) UpsertCandidates(ctx context.Context, scope auth.PaperScope, bat
 		var id int64
 		if err = tx.QueryRowContext(ctx, `INSERT INTO candidates
 		 (paper_id,section,canonical_url,aliases,outlet,title,published_at,fetched_at,byline,text,state,wire_group,repeat)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(paper_id,canonical_url) DO UPDATE SET aliases=excluded.aliases RETURNING id`,
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(paper_id,canonical_url) DO UPDATE SET aliases=excluded.aliases,
+		   title=CASE WHEN candidates.state<>'ok' AND excluded.state='ok' THEN excluded.title ELSE candidates.title END,
+		   byline=CASE WHEN candidates.state<>'ok' AND excluded.state='ok' THEN excluded.byline ELSE candidates.byline END,
+		   text=CASE WHEN candidates.state<>'ok' AND excluded.state='ok' THEN excluded.text ELSE candidates.text END,
+		   fetched_at=CASE WHEN candidates.state<>'ok' AND excluded.state='ok' THEN excluded.fetched_at ELSE candidates.fetched_at END,
+		   state=CASE WHEN excluded.state='ok' THEN 'ok' ELSE candidates.state END
+		 RETURNING id`,
 			paper, c.Section, c.CanonicalURL, string(aliasJSON), c.Outlet, c.Title, published, c.FetchedAt.UTC().Format(candidateTime), string(bylineJSON), c.Text, c.State, c.WireGroup, c.Repeat).Scan(&id); err != nil {
 			return err
 		}
@@ -215,7 +221,7 @@ func (s *Store) candidateText(ctx context.Context, paper, link string) (string, 
 	var text, state string
 	err := s.db.QueryRowContext(ctx, `SELECT text,state FROM candidates
 	 WHERE paper_id=? AND (canonical_url=? OR EXISTS (SELECT 1 FROM json_each(candidates.aliases) WHERE value=?))
-	 ORDER BY (canonical_url=?) DESC,id LIMIT 1`, paper, link, link, link).Scan(&text, &state)
+	 ORDER BY (state='ok') DESC,(canonical_url=?) DESC,id LIMIT 1`, paper, link, link, link).Scan(&text, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, ErrNoSnapshot
 	}

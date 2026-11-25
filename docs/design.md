@@ -184,7 +184,9 @@ holds everything that changes at run time. At a high level:
   Reader notes are revisions of their own.
 - **Candidates.** Immutable article snapshots per paper: canonical URL and aliases,
   extracted text and byline, or an explicit unavailable state, grouped into wire
-  copies and same-story groups, kept for the paper's retention period.
+  copies and same-story groups, kept for the paper's retention period. A stored
+  snapshot never changes, except that an unavailable one is replaced the first
+  time a later pass fetches the article.
 - **Runs and drafts.** One run per paper and local date (lease, attempts, budget
   spent, state); one draft per date moving through `gathering`, `drafted`,
   `in_review`, `published` or `held`, with its revision and an action log.

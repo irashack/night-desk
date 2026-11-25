@@ -460,3 +460,65 @@ func TestLaterCandidates(t *testing.T) {
 		t.Fatal("paper isolation", got, err)
 	}
 }
+
+func TestUnavailableCandidateRecoversOnLaterFetch(t *testing.T) {
+	s, _ := open(t)
+	a := scope(t, s, "a")
+	failed := exampleCandidate()
+	failed.Text, failed.State, failed.Byline, failed.Title = "", "unavailable", nil, "example.com"
+	failed.FetchedAt = time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	if err := s.UpsertCandidates(ctx, a, []candidate.Candidate{failed}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := s.CandidateText(ctx, a, failed.CanonicalURL); err != nil || ok {
+		t.Fatalf("unavailable snapshot considered verified: %v %v", ok, err)
+	}
+	fetched := exampleCandidate()
+	fetched.FetchedAt = time.Now().UTC().Truncate(time.Second)
+	if err := s.UpsertCandidates(ctx, a, []candidate.Candidate{fetched}); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := s.Candidates(ctx, a, "", time.Time{})
+	if err != nil || len(pool) != 1 {
+		t.Fatal(pool, err)
+	}
+	got := pool[0]
+	if got.State != "ok" || got.Text != fetched.Text || got.Title != fetched.Title || !reflect.DeepEqual(got.Byline, fetched.Byline) || !got.FetchedAt.Equal(fetched.FetchedAt) {
+		t.Fatalf("unavailable snapshot not replaced by the later fetch: %#v", got)
+	}
+	if text, ok, err := s.CandidateText(ctx, a, failed.Aliases[0]); err != nil || !ok || text != fetched.Text {
+		t.Fatalf("alias lookup after recovery: %q %v %v", text, ok, err)
+	}
+	// A later failure or a different successful fetch leaves the snapshot alone.
+	again := failed
+	again.FetchedAt = time.Now().UTC().Add(time.Hour)
+	changed := exampleCandidate()
+	changed.Text, changed.Title = "Rewritten text.", "Rewritten"
+	if err := s.UpsertCandidates(ctx, a, []candidate.Candidate{again, changed}); err != nil {
+		t.Fatal(err)
+	}
+	if pool, err := s.Candidates(ctx, a, "", time.Time{}); err != nil || len(pool) != 1 || pool[0].Text != fetched.Text || pool[0].State != "ok" {
+		t.Fatalf("ok snapshot changed: %#v %v", pool, err)
+	}
+}
+
+func TestCandidateTextPrefersFetchedSnapshot(t *testing.T) {
+	s, _ := open(t)
+	a := scope(t, s, "a")
+	// The first pass failed at the feed's link; a later pass reached the page,
+	// whose canonical URL differs, and kept the feed's link as an alias.
+	failed := exampleCandidate()
+	failed.CanonicalURL, failed.Aliases = "https://example.com/feed-link", nil
+	failed.Text, failed.State, failed.Byline = "", "unavailable", nil
+	fetched := exampleCandidate()
+	fetched.Aliases = []string{"https://example.com/feed-link"}
+	if err := s.UpsertCandidates(ctx, a, []candidate.Candidate{failed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertCandidates(ctx, a, []candidate.Candidate{fetched}); err != nil {
+		t.Fatal(err)
+	}
+	if text, ok, err := s.CandidateText(ctx, a, "https://example.com/feed-link"); err != nil || !ok || text != fetched.Text {
+		t.Fatalf("feed link lookup: %q %v %v", text, ok, err)
+	}
+}
