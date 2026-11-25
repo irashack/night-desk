@@ -177,3 +177,34 @@ func diagnosticRule(rule string) string {
 	name, _, _ := strings.Cut(rule, ": ")
 	return name
 }
+
+// PublishedChecks returns the warnings recorded when the edition of date was
+// last published, and when, for showing readers what the source checks found.
+// ok is false when no record remains (older than the paper's retention, or
+// published before records were kept) or the publish ran no source checks.
+func (s *Store) PublishedChecks(ctx context.Context, scope auth.PaperScope, date string) (warnings []DiagnosticProblem, at time.Time, ok bool, err error) {
+	paper, err := scopeID(scope)
+	if err != nil {
+		return nil, at, false, err
+	}
+	var raw, rawChecks, recorded string
+	err = s.db.QueryRowContext(ctx, `SELECT warnings,source_checks,recorded_at FROM publish_diagnostics WHERE paper_id=? AND date=? AND published=1 ORDER BY id DESC LIMIT 1`, paper, date).Scan(&raw, &rawChecks, &recorded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, at, false, nil
+	}
+	if err != nil {
+		return nil, at, false, err
+	}
+	var checks []SourceCheckCount
+	if err = json.Unmarshal([]byte(rawChecks), &checks); err != nil {
+		return nil, at, false, err
+	}
+	if len(checks) == 0 {
+		return nil, at, false, nil
+	}
+	if err = json.Unmarshal([]byte(raw), &warnings); err != nil {
+		return nil, at, false, err
+	}
+	at, err = time.Parse(time.RFC3339Nano, recorded)
+	return warnings, at, err == nil, err
+}

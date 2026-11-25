@@ -49,6 +49,8 @@ OpenAI-compatible API, or Claude).
   articles it cites, and flags repeats, wire copy and claims it cannot find. The
   checks are advisory: warnings travel with the edition, and a story whose page
   was never fetched is marked unverified rather than passed.
+  Readers see the result under each story: checked against the source, or
+  what the check could not find, and when it ran.
 - **A real reader app.** An installable PWA with offline reading of the latest
   edition, a reading view that sets a story in the paper's own type from the
   worker's stored copy (with its text size and your place kept per device),

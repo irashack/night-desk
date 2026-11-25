@@ -434,7 +434,24 @@ page that needs script) carries a note saying so. A− and A+ set the text size,
 and the place in each story is kept, per device, in the browser's local storage,
 which signing out clears. Stories without stored text keep only the outlet link,
 and the view says it has no copy; the server never fetches a page for it. Stored
-text lasts as long as the paper's `retention_days`. Without JavaScript the complete edition remains
+text lasts as long as the paper's `retention_days`.
+
+Each story says where its claims were checked. The paper's header gives the time
+the edition's source checks ran (in the paper's `timezone`), and each story
+carries one line from those checks: "Checked against the source" when every
+number and name it looked for was in Night Desk's stored copy of the cited
+pages, "N notes from the source check" listing what was not found (a figure, a
+name, a former title, a line that looks cut off), "Checked against 1 of 3
+sources" when only some of the cited pages were stored, or "Not checked against
+the source" when none was (never gathered, or the fetch failed). The
+reading view repeats the line with a short explanation. The line comes from the
+record kept when the edition was last published (see
+[Editions](#editions)), so a republished edition shows its latest checks and an
+edition whose record is older than the paper's `retention_days` shows none. The checks are advisory and run on stored text only: they never
+fetch a page, and a note means the check could not find something, not that it
+is wrong.
+
+Without JavaScript the complete edition remains
 readable as a list. Sections (`/sections`) lets a paper's readers add, rename,
 reorder and remove its sections and edit their one-line briefs, each change saved as
 an editorial revision like an agent's `PATCH /api/v1/paper`; new sections find their

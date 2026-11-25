@@ -115,11 +115,12 @@ func Run(ctx context.Context, o Options) error {
 	go func() { serving <- server.Serve(listener) }()
 	defer server.Close()
 
-	// Publish through the loopback listener, whatever address readers use.
-	if err = publishAll(ctx, db, "http://"+loopback(listener.Addr())); err != nil {
+	// Stored pages come first so publishing checks the stories against them.
+	if err = storeSnapshots(ctx, db); err != nil {
 		return err
 	}
-	if err = storeSnapshots(ctx, db); err != nil {
+	// Publish through the loopback listener, whatever address readers use.
+	if err = publishAll(ctx, db, "http://"+loopback(listener.Addr())); err != nil {
 		return err
 	}
 	if o.Out != nil {

@@ -200,6 +200,7 @@ func TestUnsupportedEntities(t *testing.T) {
 		{"case folds", "Zelensky spoke.", []string{"zelensky spoke."}, nil},
 		{"duplicates once", "Macron and Macron.", []string{"Nobody."}, []string{"Macron"}},
 		{"short words ignored", "Xi met Li.", []string{"Nobody."}, nil},
+		{"pronouns", "You asked to follow Their bridge. Your city.", []string{"Nobody."}, nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

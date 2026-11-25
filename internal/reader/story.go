@@ -22,6 +22,8 @@ type storyView struct {
 	// Partial says the snapshot looks shorter than the piece: a paywall or a
 	// page that needs script usually leaves only the opening.
 	Partial bool
+	// Provenance is what the source checks found when the edition was published.
+	Provenance *provenanceView
 }
 
 var (
@@ -107,6 +109,12 @@ func (s *Server) story(w http.ResponseWriter, r *http.Request) {
 		}
 		sv.Gathered = when.Format("January 2 at 3:04 pm")
 	}
+	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone))
+	if err != nil {
+		http.Error(w, "Reader unavailable", 500)
+		return
+	}
+	sv.Provenance = checks[item.ID]
 	if len(sv.Paragraphs) == 0 {
 		sv.Paragraphs = nil
 	}

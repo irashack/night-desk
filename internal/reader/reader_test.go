@@ -574,6 +574,10 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	for i := 0; i < 65; i++ {
 		f.publish(t, f.a, start.AddDate(0, 0, i).Format("2006-01-02"), ed, nil)
 	}
+	// The front page carries each story's source-check line.
+	if err := f.db.PublishWithDiagnostics(t.Context(), f.a, start.AddDate(0, 0, 64).Format("2006-01-02"), ed, nil, store.PublishDiagnostics{Path: "put", SourceChecks: []store.SourceCheckCount{{Status: "passed", Rule: "source text", Count: 1}}}); err != nil {
+		t.Fatal(err)
+	}
 	r := f.signIn(t, "")
 	r.Body.Close()
 	r = f.get(t, "/archive")
