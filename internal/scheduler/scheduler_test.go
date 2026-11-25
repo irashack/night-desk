@@ -8,6 +8,7 @@ import (
 
 	"github.com/irashack/night-desk/internal/api"
 	"github.com/irashack/night-desk/internal/auth"
+	"github.com/irashack/night-desk/internal/candidate"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/edition"
 	"github.com/irashack/night-desk/internal/keys"
@@ -344,5 +345,50 @@ func TestNoneDeadlineHoldsInvalidDraft(t *testing.T) {
 	d, err := db.Draft(ctx, scope, "2026-10-30")
 	if err != nil || d.State != "held" {
 		t.Fatal(d, err)
+	}
+}
+
+func TestTickPrunesExpiredSnapshotsWithoutWorker(t *testing.T) {
+	db := database(t, t.TempDir())
+	defer db.Close()
+	p := paper()
+	p.Deadline, p.RetentionDays = nil, 7
+	s := scope(t, db)
+	snapshot := func(link string, age time.Duration) candidate.Candidate {
+		return candidate.Candidate{Section: "news", CanonicalURL: link, Outlet: "Desk", Title: "Story", FetchedAt: time.Now().UTC().Add(-age), Text: "Stored text.", State: "ok"}
+	}
+	if err := db.UpsertCandidates(ctx, s, []candidate.Candidate{snapshot("https://example.com/old", 8*24*time.Hour), snapshot("https://example.com/new", time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	now := at("2026-11-20T12:00:00Z")
+	r := runner(db, p, &now)
+	r.Tick(ctx)
+	kept := func() []string {
+		t.Helper()
+		pool, err := db.Candidates(ctx, s, "", time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		links := []string{}
+		for _, c := range pool {
+			links = append(links, c.CanonicalURL)
+		}
+		return links
+	}
+	if got := kept(); len(got) != 1 || got[0] != "https://example.com/new" {
+		t.Fatalf("after first tick: %v", got)
+	}
+	if err := db.UpsertCandidates(ctx, s, []candidate.Candidate{snapshot("https://example.com/later", 9*24*time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(10 * time.Minute)
+	r.Tick(ctx)
+	if got := kept(); len(got) != 2 {
+		t.Fatalf("pruned again within the hour: %v", got)
+	}
+	now = now.Add(time.Hour)
+	r.Tick(ctx)
+	if got := kept(); len(got) != 1 {
+		t.Fatalf("after an hour: %v", got)
 	}
 }
