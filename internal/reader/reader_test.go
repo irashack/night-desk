@@ -675,3 +675,32 @@ func TestSignInPageStylesAllowedByCSP(t *testing.T) {
 		}
 	}
 }
+
+// Unfinished sign-ins are bounded, but a flood of them makes room by dropping
+// the oldest instead of refusing every reader.
+func TestLoginFloodCannotLockReadersOut(t *testing.T) {
+	f := setup(t)
+	bare := &http.Client{Transport: f.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for i := 0; i < maxPendingLogins+50; i++ {
+		r, err := bare.Get(f.http.URL + "/login")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != 302 {
+			t.Fatalf("login %d: %d", i, r.StatusCode)
+		}
+	}
+	f.s.mu.Lock()
+	n := len(f.s.pending)
+	f.s.mu.Unlock()
+	if n > maxPendingLogins {
+		t.Fatalf("%d pending sign-ins", n)
+	}
+	if r := f.signIn(t, ""); r.StatusCode != 303 {
+		t.Fatalf("reader sign-in after flood: %d", r.StatusCode)
+	}
+	if got := f.get(t, "/healthz").Header.Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
+		t.Fatalf("Permissions-Policy %q", got)
+	}
+}
