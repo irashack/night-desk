@@ -898,7 +898,13 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	if cred.Authenticator.CloneWarning {
 		// The counter went backwards: two copies of the key exist. Remove it
 		// so the copy cannot keep trying until it counts past the original.
-		_ = s.Store.RemovePasskey(r.Context(), found.Username, cred.ID)
+		if err := s.Store.RemovePasskey(r.Context(), found.Username, cred.ID); err != nil {
+			if s.Log != nil {
+				s.Log.Error("passkey signature counter went backwards; removing it failed", "username", found.Username)
+			}
+			jsonError(w, 401, "That passkey may have been copied. Sign in with your password and remove it under Account.")
+			return
+		}
 		if s.Log != nil {
 			s.Log.Warn("passkey signature counter went backwards; removed it", "username", found.Username)
 		}

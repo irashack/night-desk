@@ -211,3 +211,14 @@ func (s *Store) DeleteSessionsNotFrom(ctx context.Context, accepts func(issuer s
 	}
 	return n, nil
 }
+
+// SetPushGroups records the groups a reader's push subscriptions carry, for
+// proxy mode when the proxy reports new groups without a new session.
+func (s *Store) SetPushGroups(ctx context.Context, issuer, subject string, groups []string) error {
+	encoded, err := encodeGroups(groups)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE push_subscriptions SET reader_groups=? WHERE reader_issuer=? AND reader_subject=?`, encoded, issuer, subject)
+	return err
+}

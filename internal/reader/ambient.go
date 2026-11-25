@@ -60,10 +60,10 @@ func proxyIdentity(cfg *config.Config, r *http.Request) (user string, groups []s
 				if !slices.Contains(groups, g) {
 					groups = append(groups, g)
 				}
+				if len(groups) > 512 {
+					return "", nil, false
+				}
 			}
-		}
-		if len(groups) > 512 {
-			return "", nil, false
 		}
 		// The order a proxy lists groups in means nothing.
 		slices.Sort(groups)
@@ -101,6 +101,25 @@ func (s *Server) ambientSession(w http.ResponseWriter, r *http.Request, cfg *con
 			// group lifetime, and at once when it changes.
 			(!checked || session.Created.Add(cfg.GroupLifetime()).After(s.now()))
 		return fresh && session.Issuer == issuer && session.Subject == subject && session.GroupsChecked == checked && slices.Equal(session.Groups, groups)
+	}
+	if checked {
+		// A browser may keep an older session with these same groups while
+		// another device's sign-in moved the push subscriptions to other
+		// groups: when the reader's groups change, refresh them.
+		joined := strings.Join(groups, "\x00")
+		s.mu.Lock()
+		last, seen := s.lastGroups[subject]
+		if len(s.lastGroups) >= 1024 {
+			clear(s.lastGroups)
+		}
+		s.lastGroups[subject] = joined
+		s.mu.Unlock()
+		if seen && last != joined {
+			if err := s.Store.SetPushGroups(r.Context(), issuer, subject, groups); err != nil {
+				http.Error(w, "Reader unavailable", 500)
+				return "", false
+			}
+		}
 	}
 	if usable(token) {
 		return token, true

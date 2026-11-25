@@ -3,12 +3,14 @@ package reader
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -21,6 +23,7 @@ import (
 
 // modeFixture serves the reader in a sign-in mode without an OIDC provider.
 type modeFixture struct {
+	dir  string
 	s    *Server
 	db   *store.Store
 	cfg  *config.Config
@@ -29,7 +32,8 @@ type modeFixture struct {
 
 func modeSetup(t *testing.T, auth config.Auth, papers ...config.Paper) *modeFixture {
 	t.Helper()
-	db, err := store.Open(t.TempDir())
+	dir := t.TempDir()
+	db, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +44,7 @@ func modeSetup(t *testing.T, auth config.Auth, papers ...config.Paper) *modeFixt
 	if len(papers) == 0 {
 		papers = []config.Paper{{ID: "a", Masthead: "The A Gazette", Timezone: "America/Chicago", Look: "broadsheet", Sections: []config.Section{{Key: "news", Title: "News"}}}}
 	}
-	f := &modeFixture{db: db, cfg: &config.Config{Server: config.Server{Auth: auth, SessionLifetime: "720h", DataDir: t.TempDir()}, Papers: papers}}
+	f := &modeFixture{dir: dir, db: db, cfg: &config.Config{Server: config.Server{Auth: auth, SessionLifetime: "720h", DataDir: t.TempDir()}, Papers: papers}}
 	f.http = httptest.NewUnstartedServer(nil)
 	f.cfg.Server.PublicBaseURL = "http://" + f.http.Listener.Addr().String()
 	if auth.Local.Passkeys {
@@ -843,4 +847,48 @@ func TestSignInPagesClearTheOfflineCopy(t *testing.T) {
 	f.browser(t).setup("ada", "correct horse")
 	r, page := f.browser(t).get("/archive")
 	expect(t, r, page, http.StatusUnauthorized, `data-logout="true"`)
+}
+
+func TestProxyGroupChangeRefreshesPushGroups(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthProxy, Proxy: config.ProxyAuth{UserHeader: "Remote-User", GroupsHeader: "Remote-Groups", TrustedProxies: []string{"127.0.0.1/32", "::1/128"}}},
+		config.Paper{ID: "f", Masthead: "Family Times", Timezone: "UTC", Look: "broadsheet", Sections: []config.Section{{Key: "news", Title: "News"}}, Readers: []config.Reader{{Issuer: config.ProxyIssuer, Group: "family"}}})
+	ctx := context.Background()
+	phone, laptop := f.browser(t), f.browser(t)
+	for _, b := range []*browser{phone, laptop} {
+		b.header.Set("Remote-User", "alice")
+		b.header.Set("Remote-Groups", "family")
+		if r, _ := b.get("/"); r.StatusCode != http.StatusOK {
+			t.Fatal(r.StatusCode)
+		}
+	}
+	scope, err := auth.AuthenticateReader(ctx, f.db, f.cfg, cookie(t, phone, "nd_session"), time.Now(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.db.AddPushSubscription(ctx, scope, "https://push.example/1", nil); err != nil {
+		t.Fatal(err)
+	}
+	groups := func() string {
+		var g string
+		raw, err := sql.Open("sqlite", "file:"+filepath.Join(f.dir, "nightdesk.db")+"?mode=ro")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer raw.Close()
+		if err := raw.QueryRowContext(ctx, `SELECT reader_groups FROM push_subscriptions`).Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	// The laptop's new groups move the subscription; the phone's older
+	// session, still matching "family", moves it back.
+	laptop.header.Set("Remote-Groups", "friends")
+	laptop.get("/")
+	if g := groups(); g != `["friends"]` {
+		t.Fatal(g)
+	}
+	phone.get("/")
+	if g := groups(); g != `["family"]` {
+		t.Fatal(g)
+	}
 }
