@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -236,7 +237,7 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 							c.Aliases = append(c.Aliases, final)
 						}
 						title, text := fetcher.extract(ctx, final, page)
-						c.Text = capText(plain(text), 200*1024)
+						c.Text = capText(plainText(text), 200*1024)
 						if c.Text != "" {
 							c.State = "ok"
 							if title = plain(title); title != "" {
@@ -419,6 +420,28 @@ func plain(s string) string {
 		return r
 	}, s)), " ")
 }
+
+// plainText is plain for extracted article text: it keeps paragraph breaks so
+// the reading view can set the story in paragraphs. Paragraphs are split on
+// blank lines, or on single line breaks when the text has no blank lines, and
+// joined with one blank line.
+func plainText(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
+	parts := blankLine.Split(s, -1)
+	if len(parts) == 1 {
+		parts = strings.Split(s, "\n")
+	}
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = plain(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
+var blankLine = regexp.MustCompile(`\n[ \t\r]*\n`)
+
 func capText(s string, n int) string {
 	if len(s) <= n {
 		return s

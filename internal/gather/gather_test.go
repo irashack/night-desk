@@ -254,3 +254,27 @@ func TestWorkerAttemptLimitAndInvalidLinks(t *testing.T) {
 		t.Fatal(problems)
 	}
 }
+
+func TestPlainTextKeepsParagraphs(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"First  para\nwraps.\n\n  Second <b>para</b>.\r\n\r\nThird.", "First para wraps.\n\nSecond para .\n\nThird."},
+		{"One line\nAnother line\n\n", "One line\n\nAnother line"},
+		{"Only one paragraph.", "Only one paragraph."},
+		{"Bell\x07 rings\n \t\nnext", "Bell rings\n\nnext"},
+		{"\n\n \n", ""},
+	} {
+		got := plainText(tc.in)
+		if got != tc.want {
+			t.Errorf("plainText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+		if got != "" {
+			if problems := candidate.Validate(candidate.Candidate{Section: "news", CanonicalURL: "https://example.com/a", Title: "T", Outlet: "O", FetchedAt: time.Now(), State: "ok", Text: got}); len(problems) != 0 {
+				t.Errorf("plainText(%q) fails validation: %v", tc.in, problems)
+			}
+		}
+	}
+	_, text, err := (Readability{}).Extract("https://example.com/report", []byte(`<html><body><article><p>`+strings.Repeat("The first paragraph reports the river level. ", 8)+`</p><p>`+strings.Repeat("The second paragraph quotes the authority. ", 8)+`</p></article></body></html>`))
+	if err != nil || strings.Count(plainText(text), "\n\n") != 1 {
+		t.Fatalf("Readability paragraphs lost: %q %v", plainText(text), err)
+	}
+}
