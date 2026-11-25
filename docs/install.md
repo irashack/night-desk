@@ -10,6 +10,12 @@ embedded; no external database or other service is required. The official image 
 the image digest). You can also build one with
 `docker build -f Containerfile -t nightdesk:local .` (Podman works too).
 
+## Try the demo first
+
+`docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/irashack/night-desk demo` serves a
+fictional paper at <http://localhost:8080> with nothing to configure: no sign-in,
+no keys, no network access, and nothing kept when it stops.
+
 ## First paper
 
 Run the following as an unprivileged host user. Set `ENGINE=podman` to use Podman.

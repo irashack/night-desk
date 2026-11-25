@@ -26,14 +26,14 @@ function startDemo() {
   const dir = mkdtempSync(join(tmpdir(), 'nightdesk-demo-bin-'));
   const bin = join(dir, 'demo');
   execFileSync('go', ['build', '-o', bin, './docs/screenshots/demo'], { cwd: root, stdio: 'inherit' });
-  const child = spawn(bin, ['-addr', '127.0.0.1:0'], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = spawn(bin, ['-addr', '127.0.0.1:0', '-screenshots'], { stdio: ['ignore', 'pipe', 'inherit'] });
   const stop = () => { child.kill('SIGINT'); rmSync(dir, { recursive: true, force: true }); };
   return new Promise((ok, fail) => {
     let out = '';
     child.on('exit', (code) => fail(new Error(`demo exited with ${code}`)));
     child.stdout.on('data', (chunk) => {
       out += chunk;
-      const m = out.match(/(http:\/\/127\.0\.0\.1:\d+)\/login/);
+      const m = out.match(/(http:\/\/(?:127\.0\.0\.1|localhost):\d+)\//);
       if (m) ok({ origin: m[1], stop });
     });
   });
@@ -68,9 +68,7 @@ try {
       localStorage.setItem('nd-layout', layout);
     }, [shot.mode, shot.layout]);
     const page = await context.newPage();
-    // The demo's identity provider signs in without a prompt and returns to /.
-    await page.goto(demo.origin + '/login');
-    await page.waitForURL(demo.origin + '/');
+    // The demo has no sign-in.
     await page.goto(demo.origin + shot.path);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForLoadState('networkidle');

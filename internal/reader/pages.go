@@ -121,6 +121,12 @@ func (s *Server) base(r *http.Request) view {
 		}
 	}
 	v.Banner = banner(cfg)
+	if s.Banner != "" {
+		v.Banner = s.Banner
+	}
+	if s.NoBanner {
+		v.Banner = ""
+	}
 	if papers, refresh := p.scope.Papers(), p.scope.Refresh(); len(papers)+len(refresh) > 1 {
 		for i, a := range papers {
 			paper, ok := cfg.Paper(a.Paper)

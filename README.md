@@ -118,8 +118,16 @@ gathering worker, models, backups and upgrades. Prefer a binary? Each
 [release](https://github.com/irashack/night-desk/releases) has tarballs with build provenance for
 Linux and macOS, or run `go install github.com/irashack/night-desk/cmd/nightdesk@latest`.
 
-Want to look around first? `go run ./docs/screenshots/demo` serves a fictional
-demo paper locally with no configuration at all.
+Want to look around first? The image serves a fictional demo paper with nothing to
+configure, no keys and no network access, and keeps nothing when it stops:
+
+```sh
+docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/irashack/night-desk demo
+```
+
+Then open <http://localhost:8080>. It has four days of editions, the reading view,
+archive search and the section editor; `nightdesk demo` does the same from a
+binary.
 
 ## Documentation
 
@@ -138,6 +146,7 @@ demo paper locally with no configuration at all.
 
 | Command | What it does |
 |---|---|
+| `nightdesk demo` | Serves a fictional demo paper with nothing to configure (`--listen`, default `:8080`). |
 | `nightdesk serve` | Runs the server: agent API, reader, scheduler and webhook delivery. |
 | `nightdesk migrate` | Applies the embedded, forward-only database migrations. |
 | `nightdesk key` | `issue`, `list` and `revoke` paper-scoped keys; `--worker` selects `read,gather,draft`. |

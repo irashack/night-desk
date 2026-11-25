@@ -29,6 +29,7 @@ var commands = []command{
 	{"check", "validate a configuration (and a worker configuration) before serving", func(args []string, out, errOut io.Writer) int {
 		return standalone(append([]string{"check"}, args...), out, errOut)
 	}},
+	{"demo", "serve a fictional demo paper with nothing to configure", demoCommand},
 	{"serve", "run the server: agent API, reader, scheduler and webhook delivery", backendCommand("serve")},
 	{"migrate", "apply the embedded, forward-only database migrations", backendCommand("migrate")},
 	{"key", "issue, list or revoke paper-scoped keys", backendCommand("key")},

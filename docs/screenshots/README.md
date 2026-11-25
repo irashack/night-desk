@@ -19,18 +19,18 @@ Every headline, outlet, byline and link is invented; the links use the reserved
 ## Run the demo reader
 
 ```sh
-go run ./docs/screenshots/demo            # then open http://127.0.0.1:8080/login
-go run ./docs/screenshots/demo -addr 127.0.0.1:0   # any free port
+nightdesk demo                                   # or: docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/irashack/night-desk demo
+go run ./docs/screenshots/demo                   # from a checkout, on 127.0.0.1:8080
+go run ./docs/screenshots/demo -addr 127.0.0.1:0 # any free port
 ```
 
-The demo is a development tool, not part of the `nightdesk` binary. It starts
-the real reader and agent API with a temporary data directory, a fake OpenID
-Connect provider on loopback that signs everyone in as the demo reader, and an
-image fetcher that paints the pictures instead of downloading them. It then
-publishes the editions in `demo/editions/` through `PUT /api/v1/editions/{date}`
-and prints the sign-in URL. Ctrl-C stops it and removes the data directory
-(`-keep` leaves it behind). Weather is off because it needs Open-Meteo; sun and
-solunar times are computed locally.
+The demo lives in `internal/demo`. It starts the real reader and agent API with a
+temporary data directory, no sign-in (`server.auth.mode: none`) and a banner
+saying it is a demo, and an image fetcher that paints the pictures instead of
+downloading them. It then publishes the editions in `internal/demo/editions/`
+through `PUT /api/v1/editions/{date}` and prints the reader's address. Ctrl-C
+stops it and removes the data directory (`--keep` leaves it behind). Weather is
+off because it needs Open-Meteo; sun and solunar times are computed locally.
 
 ## Regenerate the screenshots
 
@@ -38,8 +38,8 @@ solunar times are computed locally.
 node docs/screenshots/capture.mjs
 ```
 
-This builds and starts the demo, signs in with Playwright's Chromium, writes the
-PNGs here and stops the demo. To shoot a reader you already started, pass its
+This builds and starts the demo without its banner (`-screenshots`), opens it in
+Playwright's Chromium, writes the PNGs here and stops the demo. To shoot a reader you already started, pass its
 URL: `node docs/screenshots/capture.mjs http://127.0.0.1:8080`. It needs Go and
 Node with Playwright (`require('playwright')` must resolve and Chromium must be
 installed, for example with `npx playwright install chromium`).
@@ -47,6 +47,6 @@ installed, for example with `npx playwright install chromium`).
 To change the paper, edit the JSON editions and check them with the validator:
 
 ```sh
-go run ./cmd/nightdesk validate docs/screenshots/demo/editions/2026-11-19.json \
+go run ./cmd/nightdesk validate internal/demo/editions/2026-11-19.json \
   --sections world:required,economy,science,local:required,opinion
 ```

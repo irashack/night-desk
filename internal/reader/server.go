@@ -50,6 +50,10 @@ type Server struct {
 	Editorial *editorial.Desk // when set, readers may edit their paper's sections
 	Push      *push.Key       // when set, readers may opt in to web push
 	Log       *slog.Logger
+	// Banner, when set, replaces the banner every page shows (the demo's);
+	// NoBanner shows none (the demo's screenshots).
+	Banner    string
+	NoBanner  bool
 	oauth     oauth2.Config
 	verifier  *oidc.IDTokenVerifier
 	client    *http.Client
