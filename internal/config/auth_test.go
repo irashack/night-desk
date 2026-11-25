@@ -159,3 +159,22 @@ func TestNonePublicBaseURL(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUnitsAndLocale(t *testing.T) {
+	text := strings.Replace(valid, "  look: broadsheet\n", "  look: broadsheet\n  units: metric\n  locale: en-GB\n", 1)
+	c, err := loadText(t, text)
+	if err != nil || !c.Papers[0].Metric() {
+		t.Fatal(err)
+	}
+	if l, r := c.Papers[0].NewsLocale(); l != "en-GB" || r != "GB" {
+		t.Fatal(l, r)
+	}
+	if l, r := (Paper{}).NewsLocale(); l != "en-US" || r != "US" || (Paper{}).Metric() {
+		t.Fatal("defaults")
+	}
+	for _, bad := range []string{"units: kelvin", "locale: english", "locale: en_GB", "locale: EN-gb"} {
+		if _, err := loadText(t, strings.Replace(valid, "  look: broadsheet\n", "  look: broadsheet\n  "+bad+"\n", 1)); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}

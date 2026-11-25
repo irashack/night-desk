@@ -38,6 +38,30 @@ install -d -m 0700 "$NIGHTDESK_DIR"
 `http://localhost:8080` while you try Night Desk on this machine. `--auth` chooses
 the sign-in mode: `local` (the default), `oidc`, `proxy` or `none`.
 
+### A paper Night Desk writes itself
+
+For a morning paper without an agent, add `--standalone`, or `--interactive` to be
+asked for each setting:
+
+```sh
+"$ENGINE" run --rm -it --user "$NIGHTDESK_UID:$NIGHTDESK_GID" \
+  --mount "type=bind,src=$NIGHTDESK_DIR,dst=/data" \
+  "$NIGHTDESK_IMAGE" init --dir /data --interactive
+```
+
+A standalone paper has `agent_role: none` and a `deadline` (`--deadline`, default
+`06:30`), and its sections (`--sections`, default World, Science, Technology and
+Business) each start from a news search on their title, so it needs no feeds to
+begin with. `--locale` (such as `en-GB`) sets the language and region of those
+searches, and `--units` (`metric` or `imperial`, chosen from the locale's region
+by default) the weather box's units. `--place` and `--coordinates 51.51,-0.13`
+turn on the weather and sunrise box. `init` also writes `worker/worker.key`, a key
+that can gather and draft but not publish. Run the worker with it (see
+[Gathering and optional models](#gathering-and-optional-models); with Compose, set
+`NIGHTDESK_WORKER_DIR="$NIGHTDESK_DIR/worker"` and drop the two `--worker-config`
+lines). Without a model, the paper is built from headlines, excerpts and links; add
+a worker config with `models` to have it written.
+
 `init` writes `config.yaml`, migrates `nightdesk.db`, and creates exactly
 one paper-scoped agent key in `agent.key` (0600), without printing it. The key has
 the default `read,publish,edit,review` capabilities. Defaults are paper `daily`,

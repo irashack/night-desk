@@ -5757,6 +5757,9 @@
                         }
                       ]
                     },
+                    "locale": {
+                      "type": "string"
+                    },
                     "masthead": {
                       "type": "string"
                     },
@@ -5955,6 +5958,9 @@
                       ]
                     },
                     "timezone": {
+                      "type": "string"
+                    },
+                    "units": {
                       "type": "string"
                     }
                   },
@@ -6532,6 +6538,9 @@
                         }
                       ]
                     },
+                    "locale": {
+                      "type": "string"
+                    },
                     "masthead": {
                       "type": "string"
                     },
@@ -6730,6 +6739,9 @@
                       ]
                     },
                     "timezone": {
+                      "type": "string"
+                    },
+                    "units": {
                       "type": "string"
                     }
                   },
@@ -7671,6 +7683,9 @@
                         }
                       ]
                     },
+                    "locale": {
+                      "type": "string"
+                    },
                     "masthead": {
                       "type": "string"
                     },
@@ -7869,6 +7884,9 @@
                       ]
                     },
                     "timezone": {
+                      "type": "string"
+                    },
+                    "units": {
                       "type": "string"
                     }
                   },

@@ -52,6 +52,13 @@ type Paper struct {
 	RetentionDays int                    `json:"retention_days"`
 	RecentURLs    []string               `json:"recent_urls"`
 	FoundSources  []store.SectionSources `json:"found_sources"`
+	// Locale steers news searches; see config.Paper.Locale.
+	Locale string `json:"locale"`
+}
+
+// NewsLocale is the paper's locale and region for news searches.
+func (p Paper) NewsLocale() (string, string) {
+	return config.Paper{Locale: p.Locale}.NewsLocale()
 }
 
 type Worker struct {
@@ -160,7 +167,8 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 		for _, source := range sources {
 			feedURL := source.Feed
 			if source.GoogleNews != nil {
-				feedURL = gnews.SearchFeedURL(source.GoogleNews.Site, source.GoogleNews.Query, "en", "US")
+				locale, region := p.NewsLocale()
+				feedURL = gnews.SearchFeedURL(source.GoogleNews.Site, source.GoogleNews.Query, locale, region)
 			}
 			if feedURL == "" {
 				continue

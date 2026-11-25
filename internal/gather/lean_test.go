@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/irashack/night-desk/internal/config"
@@ -99,5 +100,14 @@ func TestCoverageSearchesDeduplicatePublisherDomains(t *testing.T) {
 	got := sectionSources(p, section, outlets)
 	if len(got) != 2 || got[1].GoogleNews.Site != "other.example" {
 		t.Fatalf("publisher got duplicate search: %+v", got)
+	}
+}
+
+func TestNewsSearchLocale(t *testing.T) {
+	for locale, want := range map[string]string{"": "ceid=US%3Aen&gl=US&hl=en-US", "en-GB": "ceid=GB%3Aen&gl=GB&hl=en-GB", "de-DE": "ceid=DE%3Ade&gl=DE&hl=de-DE"} {
+		l, r := Paper{Locale: locale}.NewsLocale()
+		if u := gnews.SearchFeedURL("", "World", l, r); !strings.Contains(u, want) {
+			t.Errorf("%q: %s", locale, u)
+		}
 	}
 }

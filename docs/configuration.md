@@ -43,6 +43,8 @@ papers:
       guidance: A verified line from a philosopher or a Greek maxim.
     look: broadsheet
     timezone: America/Chicago
+    units: imperial               # imperial (°F, mph) or metric (°C, km/h)
+    locale: en-US                 # language and region of news searches
     latitude: 41.88
     longitude: -87.63
     sections:
@@ -229,6 +231,12 @@ headlines, excerpts and links. Author papers are written by their agent. `GET /a
 sections and their briefs, sources, retention, reader notes and enabled boxes;
 absent optional fields are omitted. See the generic writing pipeline in
 [integrations/hermes](../integrations/hermes/README.md).
+
+`units` is `imperial` (the default: °F and mph) or `metric` (°C and km/h) for the
+weather box. `locale` is a language and region such as `en-GB` or `de-DE` (default
+`en-US`), used for the paper's Google News searches (`google_news` sources and the
+search a `find_sources` section starts with), so they return that edition's
+stories. The reader itself stays in English.
 
 Sources, retention and coverage lean are operator configuration:
 `papers[].sources` or `papers[].sections[].sources` accept `feed`, operator-only

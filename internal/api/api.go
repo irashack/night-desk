@@ -185,6 +185,8 @@ type paperView struct {
 	FoundSources []store.SectionSources `json:"found_sources,omitempty"`
 	Masthead     string                 `json:"masthead"`
 	Place        string                 `json:"place,omitempty"`
+	Units        string                 `json:"units,omitempty"`
+	Locale       string                 `json:"locale,omitempty"`
 	Brief        *string                `json:"brief,omitempty"`
 	Deadline     *string                `json:"deadline,omitempty"`
 	Motto        *config.Motto          `json:"motto,omitempty"`
@@ -199,7 +201,7 @@ type paperView struct {
 }
 
 func (s *Server) paperView(p config.Paper) paperView {
-	v := paperView{AgentRole: p.Role(), DeadlinePolicy: p.Policy(), DraftLead: p.DraftLead, Masthead: p.Masthead, Place: p.Place, Brief: p.Brief, Deadline: p.Deadline, Motto: p.Motto, Sections: p.Sections, Timezone: p.Timezone, Boxes: p.Boxes, Sources: p.Sources, RetentionDays: p.RetentionDays, Gather: nil, Filters: p.Filters}
+	v := paperView{AgentRole: p.Role(), DeadlinePolicy: p.Policy(), DraftLead: p.DraftLead, Masthead: p.Masthead, Place: p.Place, Units: p.Units, Locale: p.Locale, Brief: p.Brief, Deadline: p.Deadline, Motto: p.Motto, Sections: p.Sections, Timezone: p.Timezone, Boxes: p.Boxes, Sources: p.Sources, RetentionDays: p.RetentionDays, Gather: nil, Filters: p.Filters}
 	if len(s.Config().Gather.AllowPrivate) > 0 {
 		g := s.Config().Gather
 		v.Gather = &g
