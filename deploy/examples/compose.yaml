@@ -20,6 +20,35 @@ services:
           create_host_path: false
     stop_grace_period: 15s
 
-# Gathering: run `nightdesk gather --server <url> --key-file <file>` in a
-# separate container with a `nightdesk key issue <paper> --worker` key (see
-# docs/install.md). Mount only its key, never this volume.
+  # Gathering and drafting (optional): `docker compose --profile worker up -d`.
+  # Issue its key and write worker.yaml first (docs/install.md, "Gathering and
+  # optional models") and set NIGHTDESK_WORKER_DIR and NIGHTDESK_PUBLIC_URL
+  # (the server's HTTPS origin). It reaches the server through your proxy, mounts
+  # only its own directory, and never sees the server's data.
+  worker:
+    profiles: [worker]
+    image: ${NIGHTDESK_IMAGE:?Set NIGHTDESK_IMAGE to a released image digest}
+    user: "${NIGHTDESK_UID:-65532}:${NIGHTDESK_GID:-65532}"
+    command:
+      - gather
+      - --server
+      - ${NIGHTDESK_PUBLIC_URL:-set-NIGHTDESK_PUBLIC_URL}
+      - --key-file
+      - /worker/worker.key
+      - --worker-config # drop these two lines to gather without models
+      - /worker/worker.yaml
+      - --interval
+      - 30m
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # For a model server on the Docker host, such as Ollama:
+    # extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - type: bind
+        source: ${NIGHTDESK_WORKER_DIR:-./nightdesk-worker}
+        target: /worker
+        read_only: true
+        bind:
+          create_host_path: false

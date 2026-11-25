@@ -90,6 +90,20 @@ and does not test client-secret readability or OIDC discovery; `serve` checks
 those at startup. Point your HTTPS proxy at port 8080; `/healthz` is the health
 endpoint. Open `/` to sign in. Keep `/data` on persistent storage across restarts.
 
+A new paper is blank until something publishes to it. To check sign-in and the
+reader before connecting an agent or a model, publish a one-story sample edition
+for today with the agent key `init` wrote (the key goes to curl on standard input,
+never on the command line); your agent or the worker replaces it when it publishes
+for the same date:
+
+```sh
+TODAY="$(TZ=America/Chicago date +%F)"   # the paper's timezone
+printf 'Authorization: Bearer %s\n' "$(cat "$NIGHTDESK_DIR/agent.key")" |
+  curl -fsS -X PUT -H @- -H 'Content-Type: application/json' \
+  --data '{"schema":1,"lead":"sample-1","sections":[{"key":"news","items":[{"id":"sample-1","kind":"news","title":"Night Desk is running","summary":"This sample edition shows the reader works. Your agent or the worker replaces it.","source":"Night Desk","url":"https://github.com/irashack/night-desk"}]}]}' \
+  "http://127.0.0.1:8080/api/v1/editions/$TODAY"
+```
+
 Web push needs no setup. `init` creates the VAPID key `vapid.key` (0600) in the data
 directory, and `serve` creates it there if it is missing; keep it with your
 configuration and secrets, since a new key means readers turn notifications on
@@ -98,7 +112,9 @@ device and allows notifications when the browser asks; on iPhone and iPad this
 works only in the app added to the Home Screen.
 
 For Compose, use [compose.yaml](../deploy/examples/compose.yaml). With the exports
-above, run `docker compose -f deploy/examples/compose.yaml up -d`; a compatible
+above, run `docker compose -f deploy/examples/compose.yaml up -d`; its `worker`
+profile adds the gathering worker below once `NIGHTDESK_WORKER_DIR` and
+`NIGHTDESK_PUBLIC_URL` are set (`docker compose --profile worker up -d`); a compatible
 Podman Compose provider can use the same file. Put the proxy on the same host,
 or adapt the private container network instead of exposing port 8080 publicly.
 
@@ -119,8 +135,10 @@ install -d -m 0700 "$NIGHTDESK_BACKUPS"
 
 This captures a consistent SQLite snapshot, retained immutable `images/` and,
 when web push is set up, the push key `vapid.key` (mode 0600); it can run while
-serving. Separately save the matching config, OIDC secret and
-any subject files using your secret-management tooling. Raw agent keys are not
+serving. Separately save the matching config, OIDC secret,
+any subject files, webhook secret files, ratings file, operator key hash and the
+worker's directory (`worker.yaml`, its model keys and prompt overrides) using your
+secret-management tooling. Raw agent keys are not
 included; their hashes and revocation state are in the database. Copy backups to
 another device: images may be hard-linked locally.
 
@@ -217,7 +235,17 @@ limits:
 ```
 
 Inside the worker container `localhost` is the container itself: point
-`base_url` at an address of the model server that the container can reach.
+`base_url` at an address of the model server that the container can reach (with
+Docker, `--add-host=host.docker.internal:host-gateway` and
+`http://host.docker.internal:11434/v1` for Ollama on the host; Ollama must listen
+beyond loopback, for example `OLLAMA_HOST=0.0.0.0`; model endpoints are the
+operator's own and need no `gather.allow_private` entry). Leave out `key_file`
+for a provider that needs no key.
+
+What the models receive: the paper's sections and briefs, the reader notes, and
+up to 16 KiB of gathered article text per run. With a hosted provider that is
+sent to the provider; with a local model it stays on your network. Use `https`
+for any endpoint that needs a key.
 
 For Claude, set `provider: anthropic` on a tier and give a Claude API key in
 `key_file` (required for this provider; `base_url` is optional). `effort` is
@@ -259,10 +287,13 @@ if it parses with at least one item. The `find-sources` prompt can be overridden
 like the drafting prompts.
 
 Relative `key_file` and `prompts.directory` paths resolve beside the worker config.
-Omit `tracing` to send nothing. Traces carry metadata by default;
+Omit `tracing` to send nothing. The exporter sends no authentication headers, so
+point `otlp_endpoint` at a collector that accepts the worker's traces without one,
+such as an OpenTelemetry Collector on your network that adds Langfuse's
+`Authorization` header before forwarding. Traces carry metadata by default;
 `record_content: true` includes prompts and outputs with credentials and reader
-notes redacted. Prompt overrides are `section-fit.md`, `same-story.md` and
-`draft-edition.md`; removing one restores the embedded default, as does
+notes redacted. Prompt overrides are `section-fit.md`, `same-story.md`,
+`draft-edition.md` and `find-sources.md`; removing one restores the embedded default, as does
 `nightdesk prompts reset --worker-config FILE <name>`, and `nightdesk prompts list`
 shows which are overridden. `limits` bounds
 the worker's model spending for each attempt. All of this is optional: an external

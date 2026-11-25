@@ -23,6 +23,16 @@ worker-only candidate and gathering-report writes use `gather`. The server decid
 request is permitted. Keep credentials out of command arguments, prompts and logs.
 Use HTTPS for a remote server.
 
+Give each client the least it needs. The key `nightdesk init` writes, and any key
+issued without `--capabilities`, has `read,publish,edit,review`: with it a client
+can change the paper's guidance and sections, overwrite reader notes and publish
+or replace editions. For an assistant that only browses the paper, issue a `read`
+key (`nightdesk key issue daily --capabilities read`). A `read` key still sees
+everything the paper holds for its agent: editions, gathered article text, reader
+feedback events with each reader's issuer and subject, and reader notes. Whatever
+a connected assistant reads goes to that assistant's model provider under its own
+terms.
+
 A standard-library HTTP client can read its credential from a file:
 
 ```python

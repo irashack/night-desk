@@ -22,7 +22,8 @@ and stored data keep the [upgrade promise](upgrading.md).
 
 ## Later
 
-- A reader with several papers (the data model already allows it).
+- A reader with several papers of their own (group papers already give a reader
+  several shared papers, with a switcher).
 - More looks, each a stylesheet over shared tokens.
 - NewsAPI and GNews as optional sources, if feeds prove thin.
 - A default deadline policy other than `hold`, if experience with unattended

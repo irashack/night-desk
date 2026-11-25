@@ -452,5 +452,6 @@ under 50 ms; container image about 45 MB; memory under 50 MB.
 
 ## Designed for, not built
 
-A reader with several papers (the data model is many-to-many) and more looks (each
+A reader with several papers of their own (the data model is many-to-many; group
+papers already give a reader several shared ones) and more looks (each
 a stylesheet over shared tokens). Planned work is in the [roadmap](roadmap.md).
