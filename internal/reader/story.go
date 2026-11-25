@@ -109,7 +109,7 @@ func (s *Server) story(w http.ResponseWriter, r *http.Request) {
 		}
 		sv.Gathered = when.Format("January 2 at 3:04 pm")
 	}
-	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone))
+	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone), v.Paper.RetentionDays)
 	if err != nil {
 		http.Error(w, "Reader unavailable", 500)
 		return

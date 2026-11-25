@@ -24,6 +24,8 @@ type provenanceView struct {
 	Summary string
 	Notes   []string
 	Checked string
+	// Compared of Cited source pages had a stored copy to compare with.
+	Compared, Cited int
 }
 
 var warningPath = regexp.MustCompile(`^sections\[(\d+)\]\.items\[(\d+)\]\.(title|summary|why|url|sources\[(\d+)\]\.url)$`)
@@ -50,7 +52,7 @@ func note(it edition.Item, field, source, rule string) (string, bool) {
 		case strings.Contains(rule, "no stored snapshot"):
 			return "Not checked against " + outlet + ": Night Desk kept no copy of that page.", true
 		case strings.Contains(rule, "fetch failed"):
-			return "Not checked against " + outlet + ": the page could not be fetched.", true
+			return "Not checked against " + outlet + ": no text could be read from the page.", true
 		}
 		return "", false
 	}
@@ -72,8 +74,8 @@ func note(it edition.Item, field, source, rule string) (string, bool) {
 // provenance builds each story's source-check summary from the record kept
 // when date's edition was published. Stories get none when no record remains
 // (it is kept for the paper's retention_days).
-func (s *Server) provenance(ctx context.Context, scope auth.PaperScope, date string, ed *edition.Edition, zone *time.Location) (map[string]*provenanceView, error) {
-	warnings, at, ok, err := s.Store.PublishedChecks(ctx, scope, date)
+func (s *Server) provenance(ctx context.Context, scope auth.PaperScope, date string, ed *edition.Edition, zone *time.Location, retentionDays int) (map[string]*provenanceView, error) {
+	warnings, at, ok, err := s.Store.PublishedChecks(ctx, scope, date, retentionDays)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -82,9 +84,12 @@ func (s *Server) provenance(ctx context.Context, scope auth.PaperScope, date str
 
 func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at time.Time) map[string]*provenanceView {
 	type found struct {
-		// notes lists what the check could not find, then the sources it
-		// could not check.
-		notes, unchecked []string
+		// notes lists what the check could not find.
+		notes []string
+		// unchecked lists each reason a source went unchecked, in order, and
+		// how many cited pages it covers.
+		unchecked []string
+		pages     map[string]int
 		// unverified holds the cited addresses the check had no copy of.
 		unverified map[string]bool
 	}
@@ -106,37 +111,60 @@ func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at 
 		}
 		f := byItem[[2]int{i, j}]
 		if f == nil {
-			f = &found{unverified: map[string]bool{}}
+			f = &found{pages: map[string]int{}, unverified: map[string]bool{}}
 			byItem[[2]int{i, j}] = f
 		}
 		switch {
 		case unverified:
-			f.unverified[citedURL(it, m[4])] = true
-			if !contains(f.unchecked, text) {
+			link := citedURL(it, m[4])
+			if f.unverified[link] {
+				continue
+			}
+			f.unverified[link] = true
+			if f.pages[text] == 0 {
 				f.unchecked = append(f.unchecked, text)
 			}
+			f.pages[text]++
 		case !contains(f.notes, text):
 			f.notes = append(f.notes, text)
 		}
 	}
-	checked := at.Format("Jan 2, 3:04 pm")
+	checked := at.Format("Jan 2, 3:04 pm MST")
 	out := map[string]*provenanceView{}
 	for i, sec := range ed.Sections {
 		for j, it := range sec.Items {
-			v := &provenanceView{Status: "checked", Summary: "Checked against the source", Checked: checked}
+			cited := len(citedURLs(it))
+			v := &provenanceView{Status: "checked", Summary: "Checked against the source", Checked: checked, Compared: cited, Cited: cited}
 			if f := byItem[[2]int{i, j}]; f != nil {
-				v.Notes = append(f.notes, f.unchecked...)
-				cited := len(citedURLs(it))
-				switch {
-				case len(f.notes) == 1:
-					v.Status, v.Summary = "notes", "1 note from the source check"
-				case len(f.notes) > 1:
-					v.Status, v.Summary = "notes", fmt.Sprintf("%d notes from the source check", len(f.notes))
-				case len(f.unverified) >= cited:
-					v.Status, v.Summary = "unchecked", "Not checked against the source"
-				default:
-					v.Status, v.Summary = "notes", fmt.Sprintf("Checked against %d of %d sources", cited-len(f.unverified), cited)
+				v.Notes = f.notes
+				for _, text := range f.unchecked {
+					if n := f.pages[text]; n > 1 {
+						text = fmt.Sprintf("%s (%d pages)", text, n)
+					}
+					v.Notes = append(v.Notes, text)
 				}
+				v.Compared = max(cited-len(f.unverified), 0)
+				var parts []string
+				switch len(f.notes) {
+				case 0:
+				case 1:
+					parts = append(parts, "1 note from the source check")
+				default:
+					parts = append(parts, fmt.Sprintf("%d notes from the source check", len(f.notes)))
+				}
+				switch {
+				case v.Compared == 0 && len(f.notes) == 0:
+					v.Status, parts = "unchecked", []string{"Not checked against the source"}
+				case v.Compared > 0 && v.Compared < cited:
+					v.Status, parts = "notes", append(parts, fmt.Sprintf("checked against %d of %d sources", v.Compared, cited))
+				default:
+					v.Status = "notes"
+				}
+				if len(parts) == 0 {
+					v.Status, parts = "checked", []string{"Checked against the source"}
+				}
+				v.Summary = strings.Join(parts, " · ")
+				v.Summary = strings.ToUpper(v.Summary[:1]) + v.Summary[1:]
 			}
 			out[it.ID] = v
 		}

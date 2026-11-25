@@ -153,3 +153,39 @@ func TestQualityCountsSendBackActions(t *testing.T) {
 		t.Fatal(data, err)
 	}
 }
+
+func TestPublishedChecks(t *testing.T) {
+	s, dir := open(t)
+	a := scope(t, s, "daily")
+	db := diagnosticsDB(t, dir)
+	day := time.Now().UTC().Format("2006-01-02")
+	// A publish that ran no source checks gives no record to show.
+	if err := s.Publish(ctx, a, day, qualityTestBodyV04(1, 0), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := s.PublishedChecks(ctx, a, day, 14); ok || err != nil {
+		t.Fatal("record without source checks", ok, err)
+	}
+	d := store.PublishDiagnostics{Path: "put", Warnings: []store.DiagnosticProblem{{Path: "sections[0].items[0].title", Rule: "unsupported-name: Smith"}}, SourceChecks: []store.SourceCheckCount{{Status: "failed", Rule: "unsupported-name", Count: 1}}}
+	if err := s.PublishWithDiagnostics(ctx, a, day, qualityTestBodyV04(1, 0), nil, d); err != nil {
+		t.Fatal(err)
+	}
+	// A rejected attempt afterwards does not replace the published record.
+	if err := s.RecordPublishDiagnostics(ctx, "daily", day, store.PublishDiagnostics{Path: "put", Errors: []store.DiagnosticProblem{{Path: "lead", Rule: "x"}}, SourceChecks: d.SourceChecks}); err != nil {
+		t.Fatal(err)
+	}
+	warnings, at, ok, err := s.PublishedChecks(ctx, a, day, 14)
+	if err != nil || !ok || len(warnings) != 1 || warnings[0].Rule != "unsupported-name: Smith" || time.Since(at) > time.Minute {
+		t.Fatal(warnings, at, ok, err)
+	}
+	// A record older than the paper's retention is hidden before pruning runs.
+	if _, err = db.Exec(`UPDATE publish_diagnostics SET recorded_at=?`, time.Now().UTC().AddDate(0, 0, -3).Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err = s.PublishedChecks(ctx, a, day, 2); ok || err != nil {
+		t.Fatal("expired record shown", ok, err)
+	}
+	if _, _, ok, err = s.PublishedChecks(ctx, a, day, 14); !ok || err != nil {
+		t.Fatal("record within retention hidden", ok, err)
+	}
+}

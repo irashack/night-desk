@@ -182,10 +182,14 @@ func diagnosticRule(rule string) string {
 // last published, and when, for showing readers what the source checks found.
 // ok is false when no record remains (older than the paper's retention, or
 // published before records were kept) or the publish ran no source checks.
-func (s *Store) PublishedChecks(ctx context.Context, scope auth.PaperScope, date string) (warnings []DiagnosticProblem, at time.Time, ok bool, err error) {
+// retentionDays (14 when 0) hides a record pruning has not reached yet.
+func (s *Store) PublishedChecks(ctx context.Context, scope auth.PaperScope, date string, retentionDays int) (warnings []DiagnosticProblem, at time.Time, ok bool, err error) {
 	paper, err := scopeID(scope)
 	if err != nil {
 		return nil, at, false, err
+	}
+	if retentionDays <= 0 {
+		retentionDays = 14
 	}
 	var raw, rawChecks, recorded string
 	err = s.db.QueryRowContext(ctx, `SELECT warnings,source_checks,recorded_at FROM publish_diagnostics WHERE paper_id=? AND date=? AND published=1 ORDER BY id DESC LIMIT 1`, paper, date).Scan(&raw, &rawChecks, &recorded)
@@ -205,6 +209,11 @@ func (s *Store) PublishedChecks(ctx context.Context, scope auth.PaperScope, date
 	if err = json.Unmarshal([]byte(raw), &warnings); err != nil {
 		return nil, at, false, err
 	}
-	at, err = time.Parse(time.RFC3339Nano, recorded)
-	return warnings, at, err == nil, err
+	if at, err = time.Parse(time.RFC3339Nano, recorded); err != nil {
+		return nil, at, false, err
+	}
+	if at.Before(time.Now().AddDate(0, 0, -retentionDays)) {
+		return nil, at, false, nil
+	}
+	return warnings, at, true, nil
 }

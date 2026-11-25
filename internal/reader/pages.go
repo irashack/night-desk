@@ -262,7 +262,7 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Reader unavailable", 500)
 		return
 	}
-	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone))
+	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone), v.Paper.RetentionDays)
 	if err != nil {
 		http.Error(w, "Reader unavailable", 500)
 		return
