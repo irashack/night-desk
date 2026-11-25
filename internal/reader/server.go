@@ -34,6 +34,9 @@ import (
 
 const CSP = "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
+// maxPendingLogins bounds the sign-ins waiting for the identity provider.
+const maxPendingLogins = 1024
+
 type transaction struct {
 	state, nonce, verifier, next string
 	expires                      time.Time
@@ -103,7 +106,7 @@ func Headers(next http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy", CSP)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Permissions-Policy", "")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -152,10 +155,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			delete(s.pending, k)
 		}
 	}
-	if len(s.pending) >= 1024 {
-		s.mu.Unlock()
-		http.Error(w, "Try signing in again shortly", 503)
-		return
+	// At the cap, the oldest unfinished sign-in makes room: refusing instead
+	// would let anyone who can reach /login lock every reader out.
+	for len(s.pending) >= maxPendingLogins {
+		var oldest [sha256.Size]byte
+		first := true
+		for k, v := range s.pending {
+			if first || v.expires.Before(s.pending[oldest].expires) {
+				oldest, first = k, false
+			}
+		}
+		delete(s.pending, oldest)
 	}
 	if old, err := r.Cookie("nd_login"); err == nil {
 		delete(s.pending, sha256.Sum256([]byte(old.Value)))
