@@ -186,3 +186,51 @@ func TestTransportGuardCannotUseTLSBypass(t *testing.T) {
 		t.Fatal("missing timeout")
 	}
 }
+
+func TestApprovedDestinationOnlyFromItself(t *testing.T) {
+	var hits atomic.Int32
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/moved" {
+			http.Redirect(w, r, "/feed", http.StatusFound)
+			return
+		}
+		hits.Add(1)
+		io.WriteString(w, "service")
+	}))
+	defer service.Close()
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, service.URL+"/feed", http.StatusFound)
+	}))
+	defer elsewhere.Close()
+	s, _ := url.Parse(service.URL)
+	e, _ := url.Parse(elsewhere.URL)
+	allow := Allow{s.Host, e.Host}
+	c := New(allow)
+	defer c.CloseIdleConnections()
+	// The service may redirect within itself.
+	if body, _, err := Read(context.Background(), c, service.URL+"/moved", 100); err != nil || string(body) != "service" {
+		t.Fatal(string(body), err)
+	}
+	// Another destination's redirect may not reach it.
+	if _, _, err := Read(context.Background(), c, elsewhere.URL+"/", 100); !errors.Is(err, ErrRefused) {
+		t.Fatalf("redirect from elsewhere reached the approved service: %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatal("service hits", hits.Load())
+	}
+	for _, tc := range []struct {
+		prev, next string
+		want       bool
+	}{
+		{service.URL + "/feed", service.URL + "/item", true},
+		{strings.ToUpper(service.URL[:7]) + service.URL[7:], service.URL + "/item", true},
+		{"https://public.example/feed", service.URL + "/item", false},
+		{"", service.URL + "/item", false},
+		{service.URL + "/feed", "https://public.example/story", true},
+		{"https://public.example/feed", "https://other.example/story", true},
+	} {
+		if got := allow.Reached(tc.prev, tc.next); got != tc.want {
+			t.Errorf("Reached(%q, %q) = %v, want %v", tc.prev, tc.next, got, tc.want)
+		}
+	}
+}

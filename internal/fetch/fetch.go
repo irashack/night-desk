@@ -38,7 +38,8 @@ type StatusError struct {
 func (e *StatusError) Error() string { return fmt.Sprintf("response returned HTTP %d", e.Code) }
 
 // Allow names explicit operator-approved destinations as host:port pairs. An
-// exception applies only to that destination, never to a redirect's destination.
+// exception applies only to requests for that destination; a redirect reaches
+// it only from the same destination (see Reached).
 type Allow []string
 
 // CheckAddress sees the numeric destination supplied by net.Dialer after DNS.
@@ -70,10 +71,8 @@ func (a Allow) permits(address string) bool {
 	return false
 }
 
-func checkURL(u *url.URL, allow Allow) error {
-	if u == nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
-		return fmt.Errorf("URL must be http or https without credentials: %w", ErrRefused)
-	}
+// destination is a URL's host:port, with the scheme's default port.
+func destination(u *url.URL) string {
 	port := u.Port()
 	if port == "" {
 		port = "80"
@@ -81,7 +80,27 @@ func checkURL(u *url.URL, allow Allow) error {
 			port = "443"
 		}
 	}
-	if allow.permits(net.JoinHostPort(u.Hostname(), port)) {
+	return net.JoinHostPort(strings.ToLower(u.Hostname()), port)
+}
+
+// Reached reports whether a request to next, a link found in or redirected to
+// from a response from prev, may use an exception: only when next is an
+// approved destination and prev was that same destination. Links on public
+// pages and public redirects never reach an approved private service.
+func (a Allow) Reached(prev, next string) bool {
+	n, err := url.Parse(next)
+	if err != nil || n.Hostname() == "" || !a.permits(destination(n)) {
+		return true
+	}
+	p, err := url.Parse(prev)
+	return err == nil && p.Hostname() != "" && destination(p) == destination(n)
+}
+
+func checkURL(u *url.URL, allow Allow) error {
+	if u == nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		return fmt.Errorf("URL must be http or https without credentials: %w", ErrRefused)
+	}
+	if allow.permits(destination(u)) {
 		return nil
 	}
 	// Check literals before dialing as well, including reused connections.
@@ -160,6 +179,9 @@ func New(allow Allow) *http.Client {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) > RedirectLimit {
 				return errors.New("too many redirects")
+			}
+			if len(via) > 0 && !allow.Reached(via[len(via)-1].URL.String(), req.URL.String()) {
+				return fmt.Errorf("redirect to an approved destination from elsewhere: %w", ErrRefused)
 			}
 			return checkURL(req.URL, allow)
 		},

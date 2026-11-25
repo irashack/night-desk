@@ -150,7 +150,7 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 	}
 	seen := map[string]bool{}
 	filter := newFilter(p.Filters)
-	fetcher := w.articles(client)
+	fetcher := w.articles(client, fetch.Allow(p.Gather.AllowPrivate))
 	list := []candidate.Candidate{}
 	attempted := 0
 	feedCache := map[string]*gofeed.Feed{}
@@ -224,6 +224,11 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 				}
 				if original != link {
 					c.Aliases = append(c.Aliases, original)
+				}
+				// A public feed's item (or a Google News redirect) never reaches an
+				// approved private service; that service's own feed may link to it.
+				if resolved && !fetcher.allow.Reached(feedURL, link) {
+					resolved = false
 				}
 				if resolved {
 					page, final, err := fetcher.read(ctx, link)

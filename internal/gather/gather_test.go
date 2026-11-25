@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -276,5 +277,61 @@ func TestPlainTextKeepsParagraphs(t *testing.T) {
 	_, text, err := (Readability{}).Extract("https://example.com/report", []byte(`<html><body><article><p>`+strings.Repeat("The first paragraph reports the river level. ", 8)+`</p><p>`+strings.Repeat("The second paragraph quotes the authority. ", 8)+`</p></article></body></html>`))
 	if err != nil || strings.Count(plainText(text), "\n\n") != 1 {
 		t.Fatalf("Readability paragraphs lost: %q %v", plainText(text), err)
+	}
+}
+
+// Feeds and pages on one approved private service may not send the worker to
+// another: only the service's own feed and pages reach it.
+func TestApprovedServiceOnlyReachedFromItself(t *testing.T) {
+	var serviceHits atomic.Int32
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serviceHits.Add(1)
+		fmt.Fprint(w, `<p>Private service page</p>`)
+	}))
+	defer service.Close()
+	var origin string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/feed", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Feed</title><link>%s</link><description>News</description><item><title>Into the service</title><link>%s/secret</link></item><item><title>Own story</title><link>%s/story</link></item></channel></rss>`, origin, service.URL, origin)
+	})
+	mux.HandleFunc("/story", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<html><head><link rel="amphtml" href="%s/amp"></head><body><p>Short.</p></body></html>`, service.URL)
+	})
+	site := httptest.NewServer(mux)
+	defer site.Close()
+	origin = site.URL
+	s, _ := url.Parse(service.URL)
+	o, _ := url.Parse(site.URL)
+	var posted []candidate.Candidate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(Paper{Sources: []config.Source{{Feed: origin + "/feed"}}, Sections: []config.Section{{Key: "news"}}, Gather: config.Gather{AllowPrivate: []string{o.Host, s.Host}}})
+			return
+		}
+		var batch struct{ Candidates []candidate.Candidate }
+		if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
+			t.Error(err)
+		}
+		posted = append(posted, batch.Candidates...)
+		fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	worker, err := New(server.URL, "test-key", extractFunc(func(string, []byte) (string, string, error) { return "Title", "Short.", nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worker.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if serviceHits.Load() != 0 {
+		t.Fatalf("worker reached the other approved service %d times", serviceHits.Load())
+	}
+	if len(posted) != 2 {
+		t.Fatalf("posted %+v", posted)
+	}
+	for _, c := range posted {
+		if strings.HasPrefix(c.CanonicalURL, service.URL) && c.State != "unavailable" {
+			t.Fatalf("service link stored as %s", c.State)
+		}
 	}
 }

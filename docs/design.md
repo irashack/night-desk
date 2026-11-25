@@ -138,9 +138,11 @@ agents the same way.
 resolution, articles, images, webhooks and push) checks the resolved address in
 the dialer, after DNS, so DNS rebinding fails. Loopback, private, link-local,
 unique-local and 100.64.0.0/10 addresses are refused, and every redirect is
-checked again. Only gathering may use exact `host:port` exceptions
-(`gather.allow_private`) for local feed services; images, webhooks and push get
-none. Image fetches are HTTPS-only with timeouts and a 5 MB cap; push sends follow
+checked again. Exact `host:port` exceptions (`gather.allow_private`) serve local
+feed services and local webhook receivers; images and push get none. An
+exception covers only requests for that destination that come from the
+operator's configuration or from the same destination: a public feed's item, a
+public page's AMP link and a public redirect never reach it. Image fetches are HTTPS-only with timeouts and a 5 MB cap; push sends follow
 no redirects. The server's own outbound traffic is short and listed: image
 retention at publish, OIDC discovery, weather, webhook delivery and web push.
 
