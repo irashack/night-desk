@@ -69,9 +69,9 @@ func backend(args []string, out, errOut io.Writer) int {
 			return usage()
 		}
 	case "accounts":
-		ok := len(args) == 2 && (args[1] == "list" || args[1] == "invite") || len(args) == 3 && (args[1] == "reset" || args[1] == "remove")
+		ok := len(args) == 2 && (args[1] == "list" || args[1] == "invite") || len(args) == 3 && (args[1] == "invite" || args[1] == "reset" || args[1] == "remove")
 		if !ok {
-			fmt.Fprintln(errOut, "usage: nightdesk accounts list | invite | reset <username> | remove <username> [--config <file>]")
+			fmt.Fprintln(errOut, "usage: nightdesk accounts list | invite [username] | reset <username> | remove <username> [--config <file>]")
 			return 2
 		}
 	case "key":
@@ -204,6 +204,14 @@ func serve(manager *config.Manager, db *store.Store, log *slog.Logger) int {
 	}
 	readerServer.Editorial = desk
 	readerServer.Log = log
+	// Sessions from another sign-in mode never count; delete them so they
+	// cannot come back if that mode is chosen again.
+	if n, e := db.DeleteSessionsNotFrom(ctx, c.AcceptsIssuer); e != nil {
+		log.Error("session cleanup failed")
+		return 1
+	} else if n > 0 {
+		log.Info("signed out sessions from another sign-in mode", "sessions", n)
+	}
 	log.Info("reader sign-in", "mode", c.AuthMode())
 	if c.AuthMode() == config.AuthNone {
 		log.Warn("server.auth.mode is none: anyone who can reach this server reads and edits its papers")

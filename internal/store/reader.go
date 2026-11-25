@@ -164,3 +164,50 @@ func (s *Store) CountSessions(ctx context.Context) (int, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sessions`).Scan(&n)
 	return n, err
 }
+
+// DeleteSessionsNotFrom deletes every session (and its push subscriptions)
+// whose issuer the current sign-in mode does not accept, so a session from an
+// earlier mode cannot come back if that mode is chosen again.
+func (s *Store) DeleteSessionsNotFrom(ctx context.Context, accepts func(issuer string) bool) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT issuer FROM sessions`)
+	if err != nil {
+		return 0, err
+	}
+	var drop []string
+	for rows.Next() {
+		var issuer string
+		if err = rows.Scan(&issuer); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if !accepts(issuer) {
+			drop = append(drop, issuer)
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, issuer := range drop {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return n, err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE session_hash IN (SELECT id_hash FROM sessions WHERE issuer=?)`, issuer); err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE issuer=?`, issuer)
+		if err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		if err = tx.Commit(); err != nil {
+			return n, err
+		}
+		c, _ := res.RowsAffected()
+		n += int(c)
+	}
+	return n, nil
+}

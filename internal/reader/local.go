@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -32,7 +33,8 @@ type authView struct {
 	Page, Title, Error, Notice string
 	Form, CSRF, Next, Token    string
 	Username                   string
-	Admin, Reset, Passkeys     bool
+	Admin, Reset, Named        bool
+	Passkeys                   bool
 	Logout                     bool
 	PasskeyRows                []passkeyRow
 	Accounts                   []accountRow
@@ -65,14 +67,23 @@ func (s *Server) renderAuth(w http.ResponseWriter, status int, v authView) {
 	_, _ = w.Write(b.Bytes())
 }
 
-// formToken returns the nd_form double-submit token, setting a new one when
-// the request has none.
+// formCookie names the double-submit cookie: on https with the __Host-
+// prefix, which a sibling subdomain cannot set.
+func (s *Server) formCookie() string {
+	if s.secure() {
+		return "__Host-nd_form"
+	}
+	return "nd_form"
+}
+
+// formToken returns the double-submit token, setting a new one when the
+// request has none.
 func (s *Server) formToken(w http.ResponseWriter, r *http.Request) string {
-	if c, err := r.Cookie("nd_form"); err == nil && len(c.Value) == 43 {
+	if c, err := r.Cookie(s.formCookie()); err == nil && len(c.Value) == 43 {
 		return c.Value
 	}
 	v := random()
-	s.cookie(w, "nd_form", v, 3600)
+	s.cookie(w, s.formCookie(), v, 3600)
 	return v
 }
 
@@ -98,18 +109,23 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 // validForm checks a pre-sign-in form: same origin and the double-submit token.
 func (s *Server) validForm(r *http.Request, token string) bool {
-	c, err := r.Cookie("nd_form")
+	c, err := r.Cookie(s.formCookie())
 	return err == nil && s.sameOrigin(r) && token != "" && equal(c.Value, token)
 }
 
-// clientKey identifies the connecting address for the sign-in limiter. Behind
-// a reverse proxy it is the proxy's, so accounts are throttled on their own.
-func clientKey(r *http.Request) string {
+// limitKeys are the sign-in limiter's keys for a request: the given ones, plus
+// the connecting address when it is public. A private address is usually the
+// reverse proxy every reader comes through, and throttling it would throttle
+// them all, so behind a proxy accounts are throttled on their own.
+func limitKeys(r *http.Request, keys ...string) []string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		host = r.RemoteAddr
+		return keys
 	}
-	return "addr:" + host
+	if a, err := netip.ParseAddr(host); err == nil && !config.PrivateAddr(a) {
+		keys = append(keys, "addr:"+a.Unmap().String())
+	}
+	return keys
 }
 
 func waitMessage(d time.Duration) string {
@@ -134,6 +150,23 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, issuer, su
 	}
 	s.cookie(w, "nd_session", key, int(s.lifetime().Seconds()))
 	return key, nil
+}
+
+// startLocalSession signs a local account in, refusing (with
+// store.ErrAccountChanged) when its password changed or it was removed after
+// verifiedAt, or the passkey use cannot be recorded.
+func (s *Server) startLocalSession(w http.ResponseWriter, r *http.Request, username string, verifiedAt time.Time, use *store.PasskeyUse) error {
+	key := random()
+	now := s.now()
+	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: config.LocalIssuer, Subject: username, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime())}
+	if err := s.Store.InsertLocalSession(r.Context(), session, verifiedAt, use); err != nil {
+		return err
+	}
+	if old, e := r.Cookie("nd_session"); e == nil {
+		_ = s.Store.DeleteSession(r.Context(), sha256.Sum256([]byte(old.Value)))
+	}
+	s.cookie(w, "nd_session", key, int(s.lifetime().Seconds()))
+	return nil
 }
 
 // loginPage is the local sign-in form, or first-run setup while there is no
@@ -163,26 +196,36 @@ func (s *Server) localLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	username, _ := store.NormalUsername(r.PostForm.Get("username"))
 	next := returnPath(r.PostForm.Get("next"))
 	v := authView{Username: username, Next: next}
-	keys := []string{"user:" + username, clientKey(r)}
-	if wait := s.limiter.Wait(keys...); wait > 0 {
+	keys := limitKeys(r, "user:"+username)
+	if wait := s.limiter.Attempt(keys...); wait > 0 {
 		v.Error = waitMessage(wait)
 		s.loginPage(w, r, http.StatusTooManyRequests, v)
 		return
 	}
+	verifiedAt := s.now()
 	account, err := s.Store.Account(r.Context(), username)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
 	// A missing account costs the same derivation as a wrong password.
-	if !auth.VerifyPassword(account.PasswordHash, r.PostForm.Get("password")) {
-		s.limiter.Fail(keys...)
+	ok, err := auth.VerifyPassword(r.Context(), account.PasswordHash, r.PostForm.Get("password"))
+	if err != nil {
+		v.Error = "Night Desk is busy. Try again in a moment."
+		s.loginPage(w, r, http.StatusServiceUnavailable, v)
+		return
+	}
+	if !ok {
 		v.Error = "That username and password do not match."
 		s.loginPage(w, r, http.StatusUnauthorized, v)
 		return
 	}
-	s.limiter.Succeed("user:" + username)
-	if _, err = s.startSession(w, r, config.LocalIssuer, account.Username, nil, false); err != nil {
+	s.limiter.Succeed(keys...)
+	if err = s.startLocalSession(w, r, account.Username, verifiedAt, nil); errors.Is(err, store.ErrAccountChanged) {
+		v.Error = "Your account changed while you signed in. Try again."
+		s.loginPage(w, r, http.StatusConflict, v)
+		return
+	} else if err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
@@ -240,8 +283,8 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Form = r.PostForm.Get("form")
 	v.Username = r.PostForm.Get("username")
-	keys := []string{"setup", clientKey(r)}
-	if wait := s.limiter.Wait(keys...); wait > 0 {
+	keys := limitKeys(r, "setup")
+	if wait := s.limiter.Attempt(keys...); wait > 0 {
 		v.Error = waitMessage(wait)
 		s.renderAuth(w, http.StatusTooManyRequests, v)
 		return
@@ -250,7 +293,6 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	code := s.setupCode
 	s.mu.Unlock()
 	if code == "" || !equal(code, strings.TrimSpace(r.PostForm.Get("code"))) {
-		s.limiter.Fail(keys...)
 		v.Error = "That setup code is not the one in the server's log."
 		s.renderAuth(w, http.StatusUnauthorized, v)
 		return
@@ -276,11 +318,11 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.setupCode = ""
 	s.mu.Unlock()
-	s.limiter.Succeed("setup")
+	s.limiter.Succeed(keys...)
 	if s.Log != nil {
 		s.Log.Info("first account created", "username", username)
 	}
-	if _, err = s.startSession(w, r, config.LocalIssuer, username, nil, false); err != nil {
+	if err = s.startLocalSession(w, r, username, s.now(), nil); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
@@ -311,7 +353,7 @@ func (s *Server) invitePage(w http.ResponseWriter, r *http.Request) {
 		s.invalidInvite(w)
 		return
 	}
-	s.renderAuth(w, http.StatusOK, authView{Page: "invite", Title: "Invitation", Form: s.formToken(w, r), Token: token, Reset: invite.Username != "", Username: invite.Username})
+	s.renderAuth(w, http.StatusOK, authView{Page: "invite", Title: "Invitation", Form: s.formToken(w, r), Token: token, Reset: invite.Reset, Named: invite.Username != "", Username: invite.Username})
 }
 
 func (s *Server) inviteSubmit(w http.ResponseWriter, r *http.Request) {
@@ -327,16 +369,24 @@ func (s *Server) inviteSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
-	v := authView{Page: "invite", Title: "Invitation", Token: token, Reset: invite.Username != "", Username: invite.Username}
+	named := invite.Username != ""
+	v := authView{Page: "invite", Title: "Invitation", Token: token, Reset: invite.Reset, Named: named, Username: invite.Username}
 	if r.ParseForm() != nil || !s.validForm(r, r.PostForm.Get("form")) {
 		v.Form, v.Error = s.formToken(w, r), "The form expired. Please try again."
 		s.renderAuth(w, http.StatusForbidden, v)
 		return
 	}
 	v.Form = r.PostForm.Get("form")
-	username, problem := checkNew(r.PostForm.Get("username"), !v.Reset, r.PostForm.Get("password"), r.PostForm.Get("confirm"))
-	if !v.Reset {
+	username, problem := checkNew(r.PostForm.Get("username"), !named, r.PostForm.Get("password"), r.PostForm.Get("confirm"))
+	if named {
+		username = invite.Username
+	} else {
 		v.Username = username
+		// A name a paper's readers list grants is kept for an invite made
+		// for it: whoever holds a general invite must not take it first.
+		if problem == "" && s.reservedName(username) {
+			problem = "That username is kept for someone a paper names. Choose another, or ask for an invite made for it."
+		}
 	}
 	if problem != "" {
 		v.Error = problem
@@ -361,11 +411,23 @@ func (s *Server) inviteSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
-	if _, err = s.startSession(w, r, config.LocalIssuer, username, nil, false); err != nil {
+	if err = s.startLocalSession(w, r, username, s.now(), nil); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// reservedName reports whether a paper names username as a reader.
+func (s *Server) reservedName(username string) bool {
+	for _, p := range s.Config().Papers {
+		for _, reader := range p.Readers {
+			if reader.Group == "" && reader.ResolvedSubject() == username {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // account loads the signed-in local account.
@@ -422,16 +484,10 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := s.accountView(r, a)
-	keys := []string{"user:" + a.Username, clientKey(r)}
-	if wait := s.limiter.Wait(keys...); wait > 0 {
-		v.Error = waitMessage(wait)
-		s.renderAuth(w, http.StatusTooManyRequests, v)
-		return
-	}
-	if !auth.VerifyPassword(a.PasswordHash, r.PostForm.Get("current")) {
-		s.limiter.Fail(keys...)
-		v.Error = "Your current password was not right."
-		s.renderAuth(w, http.StatusUnauthorized, v)
+	if !s.checkCurrentPassword(w, r, a, r.PostForm.Get("current"), func(status int, message string) {
+		v.Error = message
+		s.renderAuth(w, status, v)
+	}) {
 		return
 	}
 	if _, problem := checkNew("", false, r.PostForm.Get("password"), r.PostForm.Get("confirm")); problem != "" {
@@ -449,9 +505,30 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Account unavailable", 500)
 		return
 	}
-	s.limiter.Succeed("user:" + a.Username)
 	v.Notice = "Your password is changed. Your other devices are signed out."
 	s.renderAuth(w, http.StatusOK, v)
+}
+
+// checkCurrentPassword verifies a signed-in account's password before a
+// sensitive change, throttled like sign-in; on failure it calls fail with the
+// status and message to show.
+func (s *Server) checkCurrentPassword(w http.ResponseWriter, r *http.Request, a store.Account, password string, fail func(int, string)) bool {
+	keys := limitKeys(r, "user:"+a.Username)
+	if wait := s.limiter.Attempt(keys...); wait > 0 {
+		fail(http.StatusTooManyRequests, waitMessage(wait))
+		return false
+	}
+	ok, err := auth.VerifyPassword(r.Context(), a.PasswordHash, password)
+	if err != nil {
+		fail(http.StatusServiceUnavailable, "Night Desk is busy. Try again in a moment.")
+		return false
+	}
+	if !ok {
+		fail(http.StatusUnauthorized, "Your current password was not right.")
+		return false
+	}
+	s.limiter.Succeed(keys...)
+	return true
 }
 
 // admin loads the signed-in account and requires it to administer.
@@ -495,12 +572,13 @@ func (s *Server) adminPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// issueLink creates an invite (username "") or a reset link for username.
-func (s *Server) issueLink(r *http.Request, by, username string) (string, time.Time, error) {
+// issueLink creates an invite (for username, or any name when it is "") or a
+// reset link for username.
+func (s *Server) issueLink(r *http.Request, by, username string, reset bool) (string, time.Time, error) {
 	token := random()
 	now := s.now()
 	expires := now.Add(s.Config().InviteLifetime())
-	err := s.Store.CreateInvite(r.Context(), store.Invite{TokenHash: sha256.Sum256([]byte(token)), Username: username, CreatedBy: by, Created: now, Expires: expires})
+	err := s.Store.CreateInvite(r.Context(), store.Invite{TokenHash: sha256.Sum256([]byte(token)), Reset: reset, Username: username, CreatedBy: by, Created: now, Expires: expires})
 	return strings.TrimRight(s.Config().Server.PublicBaseURL, "/") + "/invite/" + token, expires, err
 }
 
@@ -512,7 +590,21 @@ func (s *Server) adminInvite(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	link, expires, err := s.issueLink(r, a.Username, "")
+	name := ""
+	if raw := strings.TrimSpace(r.PostForm.Get("username")); raw != "" {
+		var ok bool
+		if name, ok = store.NormalUsername(raw); !ok {
+			s.renderAdmin(w, r, a, func(v *authView) {
+				v.Error = "A username is 1 to 64 letters, digits, dots, dashes or underscores, starting with a letter or digit."
+			})
+			return
+		}
+		if _, err := s.Store.Account(r.Context(), name); err == nil {
+			s.renderAdmin(w, r, a, func(v *authView) { v.Error = name + " already has an account. Send a reset link instead." })
+			return
+		}
+	}
+	link, expires, err := s.issueLink(r, a.Username, name, false)
 	if err != nil {
 		http.Error(w, "Invite unavailable", 500)
 		return
@@ -520,6 +612,9 @@ func (s *Server) adminInvite(w http.ResponseWriter, r *http.Request) {
 	s.renderAdmin(w, r, a, func(v *authView) {
 		v.Link, v.LinkExpires = link, expires.In(time.Local).Format("2 Jan 15:04 MST")
 		v.Notice = "Invite created."
+		if name != "" {
+			v.Notice = "Invite created for " + name + "."
+		}
 	})
 }
 
@@ -536,14 +631,14 @@ func (s *Server) adminReset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	link, expires, err := s.issueLink(r, a.Username, target)
+	link, expires, err := s.issueLink(r, a.Username, target, true)
 	if err != nil {
 		http.Error(w, "Reset unavailable", 500)
 		return
 	}
 	s.renderAdmin(w, r, a, func(v *authView) {
 		v.Link, v.LinkExpires = link, expires.In(time.Local).Format("2 Jan 15:04 MST")
-		v.Notice = "Password reset link for " + target + ". Their password works until they use it."
+		v.Notice = "Password reset link for " + target + ". Their password works until they use it; using it removes their passkeys and signs them out everywhere."
 	})
 }
 
@@ -665,35 +760,37 @@ type ceremony struct {
 
 const maxCeremonies = 1024
 
-// holdCeremony keeps a WebAuthn challenge for five minutes under key.
-func (s *Server) holdCeremony(key [32]byte, data webauthn.SessionData) {
+// holdCeremony keeps a WebAuthn challenge for five minutes under key in m:
+// sign-in challenges and registration challenges (keyed by session) are kept
+// apart, so churning anonymous sign-ins cannot evict a registration.
+func (s *Server) holdCeremony(m map[[32]byte]ceremony, key [32]byte, data webauthn.SessionData) {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for k, v := range s.ceremonies {
+	for k, v := range m {
 		if !v.expires.After(now) {
-			delete(s.ceremonies, k)
+			delete(m, k)
 		}
 	}
-	for len(s.ceremonies) >= maxCeremonies {
+	for len(m) >= maxCeremonies {
 		var oldest [32]byte
 		first := true
-		for k, v := range s.ceremonies {
-			if first || v.expires.Before(s.ceremonies[oldest].expires) {
+		for k, v := range m {
+			if first || v.expires.Before(m[oldest].expires) {
 				oldest, first = k, false
 			}
 		}
-		delete(s.ceremonies, oldest)
+		delete(m, oldest)
 	}
-	s.ceremonies[key] = ceremony{data, now.Add(5 * time.Minute)}
+	m[key] = ceremony{data, now.Add(5 * time.Minute)}
 }
 
-// takeCeremony removes and returns key's unexpired challenge.
-func (s *Server) takeCeremony(key [32]byte) (webauthn.SessionData, bool) {
+// takeCeremony removes and returns key's unexpired challenge from m.
+func (s *Server) takeCeremony(m map[[32]byte]ceremony, key [32]byte) (webauthn.SessionData, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c, ok := s.ceremonies[key]
-	delete(s.ceremonies, key)
+	c, ok := m[key]
+	delete(m, key)
 	return c.data, ok && c.expires.After(s.now())
 }
 
@@ -722,6 +819,7 @@ type passkeyRequest struct {
 	Form       string          `json:"form"`
 	CSRF       string          `json:"csrf"`
 	Name       string          `json:"name"`
+	Password   string          `json:"password"`
 	Next       string          `json:"next"`
 	Credential json.RawMessage `json:"credential"`
 }
@@ -750,7 +848,7 @@ func (s *Server) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "Passkeys are unavailable.")
 		return
 	}
-	s.holdCeremony(ceremonyKey("login", v.Form), *data)
+	s.holdCeremony(s.logins, ceremonyKey("login", v.Form), *data)
 	writeJSON(w, options)
 }
 
@@ -763,19 +861,19 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 403, "The page expired. Reload it and try again.")
 		return
 	}
-	data, ok := s.takeCeremony(ceremonyKey("login", v.Form))
+	data, ok := s.takeCeremony(s.logins, ceremonyKey("login", v.Form))
 	if !ok {
 		jsonError(w, 400, "The passkey request expired. Try again.")
 		return
 	}
-	keys := []string{"passkey", clientKey(r)}
-	if wait := s.limiter.Wait(clientKey(r)); wait > 0 {
+	keys := limitKeys(r)
+	if wait := s.limiter.Attempt(keys...); wait > 0 {
 		jsonError(w, 429, waitMessage(wait))
 		return
 	}
+	verifiedAt := s.now()
 	parsed, err := protocol.ParseCredentialRequestResponseBytes(v.Credential)
 	if err != nil {
-		s.limiter.Fail(keys...)
 		jsonError(w, 400, "The passkey did not work.")
 		return
 	}
@@ -790,7 +888,6 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	_, cred, err := s.passkeys.ValidatePasskeyLogin(handler, data, parsed)
 	if err != nil || found.Username == "" {
-		s.limiter.Fail(keys...)
 		jsonError(w, 401, "That passkey is not registered here.")
 		return
 	}
@@ -802,14 +899,15 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stored, _ := json.Marshal(cred)
-	if err = s.Store.UsePasskey(r.Context(), cred.ID, stored, s.now()); err != nil {
+	use := &store.PasskeyUse{ID: cred.ID, Credential: stored, SignCount: cred.Authenticator.SignCount}
+	if err = s.startLocalSession(w, r, found.Username, verifiedAt, use); errors.Is(err, store.ErrAccountChanged) {
+		jsonError(w, 401, "That passkey was removed or used elsewhere at the same moment. Try again.")
+		return
+	} else if err != nil {
 		jsonError(w, 500, "Sign-in unavailable.")
 		return
 	}
-	if _, err = s.startSession(w, r, config.LocalIssuer, found.Username, nil, false); err != nil {
-		jsonError(w, 500, "Sign-in unavailable.")
-		return
-	}
+	s.limiter.Succeed(keys...)
 	next := returnPath(v.Next)
 	if next == "" {
 		next = "/"
@@ -831,11 +929,17 @@ func (s *Server) signedInJSON(w http.ResponseWriter, r *http.Request) (passkeyRe
 }
 
 func (s *Server) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.signedInJSON(w, r); !ok {
+	v, ok := s.signedInJSON(w, r)
+	if !ok {
 		return
 	}
 	a, ok := s.account(w, r)
 	if !ok {
+		return
+	}
+	// A passkey outlives sessions, so adding one needs the password too: a
+	// stolen session alone must not leave a way back in.
+	if !s.checkCurrentPassword(w, r, a, v.Password, func(status int, message string) { jsonError(w, status, message) }) {
 		return
 	}
 	u, err := s.passkeyUser(r, a)
@@ -854,7 +958,7 @@ func (s *Server) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "Passkeys are unavailable.")
 		return
 	}
-	s.holdCeremony(ceremonyKey("register", sessionKey(r)), *data)
+	s.holdCeremony(s.registrations, ceremonyKey("register", sessionKey(r)), *data)
 	writeJSON(w, options)
 }
 
@@ -863,7 +967,7 @@ func (s *Server) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, ok := s.takeCeremony(ceremonyKey("register", sessionKey(r)))
+	data, ok := s.takeCeremony(s.registrations, ceremonyKey("register", sessionKey(r)))
 	if !ok {
 		jsonError(w, 400, "The passkey request expired. Try again.")
 		return
@@ -892,7 +996,7 @@ func (s *Server) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		name = "Passkey"
 	}
 	stored, _ := json.Marshal(cred)
-	if err = s.Store.AddPasskey(r.Context(), store.Passkey{ID: cred.ID, Username: a.Username, Name: name, Credential: stored, Created: s.now()}); err != nil {
+	if err = s.Store.AddPasskey(r.Context(), store.Passkey{ID: cred.ID, Username: a.Username, Name: name, Credential: stored, SignCount: cred.Authenticator.SignCount, Created: s.now()}); err != nil {
 		jsonError(w, 409, "That passkey is already registered.")
 		return
 	}

@@ -64,7 +64,7 @@ func proxyIdentity(cfg *config.Config, r *http.Request) (user string, groups []s
 }
 
 // ambientSession returns the session token to authenticate with in proxy and
-// none modes, creating a session when the request has none for its reader.
+// none modes, creating a session when there is none for the request's reader.
 // It answers the request itself (and returns false) when no one is signed in.
 func (s *Server) ambientSession(w http.ResponseWriter, r *http.Request, cfg *config.Config, token string) (string, bool) {
 	issuer, subject := config.NoneIssuer, config.NoneSubject
@@ -77,23 +77,60 @@ func (s *Server) ambientSession(w http.ResponseWriter, r *http.Request, cfg *con
 			return "", false
 		}
 		issuer, subject, groups, checked = config.ProxyIssuer, user, g, cfg.Server.Auth.Proxy.GroupsHeader != ""
+	} else if !cfg.Server.Auth.None.AcknowledgePublicAccess && !privateClient(r) {
+		// Defence in depth: the listen address was private when checked, but
+		// a published port or a new interface may still pass the public in.
+		http.Error(w, "This Night Desk has no sign-in and serves only private networks.", http.StatusForbidden)
+		return "", false
 	}
-	if token != "" {
+	usable := func(token string) bool {
+		if token == "" {
+			return false
+		}
 		session, err := s.Store.Session(r.Context(), sha256.Sum256([]byte(token)))
 		fresh := err == nil && session.Expires.After(s.now()) &&
 			// Group membership is re-read from the proxy at least once a
 			// group lifetime, and at once when it changes.
 			(!checked || session.Created.Add(cfg.GroupLifetime()).After(s.now()))
-		if fresh && session.Issuer == issuer && session.Subject == subject && session.GroupsChecked == checked && slices.Equal(session.Groups, groups) {
-			return token, true
-		}
+		return fresh && session.Issuer == issuer && session.Subject == subject && session.GroupsChecked == checked && slices.Equal(session.Groups, groups)
+	}
+	if usable(token) {
+		return token, true
+	}
+	// A client that keeps no cookie (a script, a health check) reuses the
+	// reader's session instead of adding one per request. The token stays in
+	// memory only, since the database keeps just its hash.
+	key := issuer + "\x00" + subject + "\x00" + strings.Join(groups, "\x00")
+	s.mu.Lock()
+	known := s.ambient[key]
+	s.mu.Unlock()
+	if usable(known) {
+		s.cookie(w, "nd_session", known, int(s.lifetime().Seconds()))
+		return known, true
 	}
 	token, err := s.startSession(w, r, issuer, subject, groups, checked)
 	if err != nil {
 		http.Error(w, "Reader unavailable", 500)
 		return "", false
 	}
+	s.mu.Lock()
+	if len(s.ambient) >= 1024 {
+		clear(s.ambient)
+	}
+	s.ambient[key] = token
+	s.mu.Unlock()
 	return token, true
+}
+
+// privateClient reports whether the connecting address is loopback, private,
+// link-local or CGNAT.
+func privateClient(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	a, err := netip.ParseAddr(host)
+	return err == nil && config.PrivateAddr(a)
 }
 
 // banner warns every page when the server has no sign-in.

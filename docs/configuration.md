@@ -8,7 +8,7 @@ event stream.
 
 The backend implements the agent API, drafts, candidates, events, retained
 images, feedback retrieval, the deadline scheduler and administrative commands,
-plus the OIDC-signed-in reader. Source and article fetching and model calls do not
+plus the reader app. Source and article fetching and model calls do not
 run here; they run in `nightdesk gather`.
 
 Start with a private YAML configuration (relative server paths resolve to this file).
@@ -23,6 +23,8 @@ server:
   data_dir: data
   session_lifetime: 720h
   group_session_lifetime: 24h   # how long sign-in's group membership counts
+  auth:
+    mode: oidc                    # oidc, proxy, local or none: see Reader sign-in
   oidc:
     issuer: https://identity.example
     client_id: nightdesk
@@ -93,6 +95,119 @@ them rejects the entire reload rather than silently moving the live database or
 listener. The OIDC secret file is read at startup, when provider discovery also
 runs. Register `<public_base_url>/auth/callback` as the provider's redirect URI.
 
+### Reader sign-in
+
+`server.auth.mode` chooses how readers sign in. The papers' `readers` lists still
+decide what each one reads.
+
+| Mode | Who a reader is | Use it when |
+|---|---|---|
+| `local` | A password account kept in the database, with optional passkeys. | You want no identity provider. The default for a new `init`. |
+| `oidc` | The verified issuer and subject from your OIDC provider. | You run Pocket ID, Authentik, Keycloak or similar. |
+| `proxy` | The user your reverse proxy signed in, from a header it sets. | Authelia, oauth2-proxy, Tailscale Serve or similar already guard the site. |
+| `none` | One reader, with no sign-in at all. | A private network with one reader. |
+
+Without `server.auth`, a configuration with `server.oidc` keeps signing in through
+OIDC, so existing installations need no change, and one without it uses `local`.
+Settings for a mode other than the one chosen are refused, as is `server.oidc` in
+any mode but `oidc`. Changing the mode needs a restart and signs every reader out:
+a session from one mode never counts in another.
+
+**`local`.** Readers sign in with a username and password. Passwords are hashed
+with argon2id (19 MiB, two passes) and must have at least 10 characters.
+
+```yaml
+server:
+  auth:
+    mode: local
+    local:
+      passkeys: true          # readers may add passkeys and sign in with them
+      invite_lifetime: 72h    # how long an invite or reset link works (default 72h)
+```
+
+- **First run.** While there is no account, `serve` prints a one-time setup code in
+  its log (`docker logs nightdesk`) and every page leads to `/setup`, which asks for
+  that code, then creates the first account. That account is an administrator.
+- **Inviting readers.** An administrator opens **Readers** in the Menu and creates an
+  invite link. It works once, until `invite_lifetime` runs out. The reader chooses
+  a password, and a username unless the administrator gave one. A username that a
+  paper's `readers` list names can only be taken through an invite made for that
+  name, so whoever holds a general invite cannot claim it first.
+- **Resets and removal.** The same page creates password-reset links, makes another
+  account an administrator or a reader, and removes accounts. Using a reset link
+  sets a new password, removes the account's passkeys and ends all its sessions, so
+  nothing an intruder added survives it. Removing an account ends its sessions,
+  passkeys and notifications; its feedback stays with the paper. The last
+  administrator cannot be removed or demoted.
+- **What each account reads.** A paper whose `readers` list is empty is read by
+  every account. To keep a paper to some accounts, name them:
+  `readers: [{subject: alice}]` (omit `issuer` in this mode). An account's own paper
+  (the one at `/`, whose sections it may edit) is the first paper that names it, or
+  else the first open paper. Local accounts have no groups.
+- **Passkeys.** With `passkeys: true`, each reader may add passkeys under
+  **Account** (which asks for their password again) and use **Sign in with a
+  passkey**. Browsers allow passkeys only on
+  `https` or `localhost`, for a domain name, so they stay off (with a warning in the
+  log) when `public_base_url` is an IP address. Moving to another domain makes
+  existing passkeys stop working; passwords still work.
+- **Throttling.** After five failed passwords, an account waits a doubling delay
+  before its next try, up to fifteen minutes; a success clears it, and there is no
+  permanent lockout. A client connecting from a public address is throttled by
+  address as well. Behind a reverse proxy every request comes from the proxy's
+  private address, so accounts are throttled on their own.
+- **From the command line.** `nightdesk accounts list`, `accounts invite`,
+  `accounts reset <username>` and `accounts remove <username>` do the same for a
+  headless install. A reset link is how to recover a lost administrator password.
+  An invite used while there is no account creates an administrator.
+
+**`proxy`.** The reverse proxy authenticates and sends the user's name in a header.
+Night Desk believes that header only from the addresses in `trusted_proxies`. A
+request from anywhere else is never signed in, whatever headers it carries, so do
+not list a range that untrusted clients can connect from.
+
+```yaml
+server:
+  auth:
+    mode: proxy
+    proxy:
+      user_header: Remote-User         # required
+      groups_header: Remote-Groups     # optional, comma-separated
+      trusted_proxies: ["172.18.0.0/16", "127.0.0.1"]
+papers:
+  - id: daily
+    readers:
+      - subject: alice                 # the proxy's user name; omit issuer
+      - group: family                  # needs groups_header
+```
+
+Configure the proxy to **replace** these headers on every request, so a client
+cannot supply its own; Night Desk refuses a request carrying the user header twice.
+Sessions follow the header: when it names someone else, or the groups change, the
+old session is not used. There is no sign-in page or sign-out in this mode; sign
+out at the proxy. `trusted_proxies` may not contain `0.0.0.0/0` or `::/0`.
+
+**`none`.** There is no sign-in. One reader reads every paper (the first is theirs
+and its sections are editable) and every page shows a banner saying so. Night Desk
+holds model keys and fetches URLs, so an open public instance would let anyone spend
+your model budget. `serve` and `check` therefore refuse a `listen` address that is
+not loopback, private (RFC 1918, unique local IPv6), link-local or CGNAT (Tailscale's
+100.64.0.0/10). For `0.0.0.0` or `::` they look at this machine's addresses: inside
+a container these are private, so the container's usual `0.0.0.0:8080` passes,
+while a host with a public address fails. Publishing the port does not change what
+the container sees, so publish it only to a private address (for example
+`--publish 127.0.0.1:8080:8080`). As a second guard, requests from a public client
+address are refused with 403. To serve a public address anyway, set:
+
+```yaml
+server:
+  auth:
+    mode: none
+    none:
+      acknowledge_public_access: true   # anyone who reaches it reads and edits the paper
+```
+
+`readers` must be empty in this mode.
+
 `brief` and section `brief` are optional editorial guidance (at most 2000 and 600
 characters respectively). Optional `motto.guidance` is the motto policy (at most
 2000 characters); omit `motto` to tell the agent to omit it. All guidance is trimmed,
@@ -147,6 +262,10 @@ Keycloak, with a groups mapper, send one). When any paper has a group reader,
 sign-in also asks for the `groups` scope, or you can list `groups` in
 `server.oidc.scopes` yourself. The claim is stored with the session; duplicate
 issuer/group pairs on one paper are rejected.
+
+In `proxy` mode the groups come from `groups_header` instead, on every request, and
+a group reader omits `issuer`. The rules below are the same, except that membership
+is re-read whenever the header changes rather than only at sign-in.
 
 - A session reads its subject paper first (the first paper naming its subject,
   served at `/`), then every paper one of its groups reads, in configuration
@@ -276,10 +395,10 @@ rejected in v1 editions.
 
 ## Reader
 
-Visit `/` and follow the sign-in link. OIDC identities are the verified issuer and
-subject (or a provider group, see [Group readers](#group-readers)), never email;
-configure them in the paper's `readers` list. Unmapped
-identities see only “No paper for you yet”. A removed mapping takes effect on the
+Visit `/` and sign in as [Reader sign-in](#reader-sign-in) describes. OIDC
+identities are the verified issuer and subject (or a provider group, see
+[Group readers](#group-readers)), never email; configure them in the paper's
+`readers` list. Unmapped identities see only “No paper for you yet”. A removed mapping takes effect on the
 next online request after configuration reload.
 
 The embedded reader has Pages, List and Reader layouts (Reader is a centered

@@ -207,6 +207,9 @@ func validHeader(name string) bool {
 	return textproto.CanonicalMIMEHeaderKey(name) != ""
 }
 
+// PrivateAddr reports whether a is loopback, link-local, private or CGNAT.
+func PrivateAddr(a netip.Addr) bool { return privateAddr(a) }
+
 // privateAddr reports whether a is loopback, link-local or private.
 func privateAddr(a netip.Addr) bool {
 	a = a.Unmap()

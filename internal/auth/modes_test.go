@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,7 +67,14 @@ func TestPasswordHash(t *testing.T) {
 	if err != nil || !strings.HasPrefix(h, "$argon2id$v=19$m=19456,t=2,p=1$") {
 		t.Fatal(h, err)
 	}
-	if !VerifyPassword(h, "correct horse battery") || VerifyPassword(h, "correct horse batterY") || VerifyPassword(h, "") {
+	verify := func(hash, password string) bool {
+		ok, err := VerifyPassword(context.Background(), hash, password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if !verify(h, "correct horse battery") || verify(h, "correct horse batterY") || verify(h, "") {
 		t.Fatal("verification wrong")
 	}
 	if h2, _ := HashPassword("correct horse battery"); h2 == h {
@@ -74,7 +82,7 @@ func TestPasswordHash(t *testing.T) {
 	}
 	// No account, malformed and exhausting hashes all refuse.
 	for _, bad := range []string{"", "$argon2i$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA", "$argon2id$v=19$m=4194304,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA", "plain"} {
-		if VerifyPassword(bad, "night-desk-no-such-account") {
+		if verify(bad, "night-desk-no-such-account") {
 			t.Fatal(bad)
 		}
 	}
@@ -87,40 +95,69 @@ func TestLimiter(t *testing.T) {
 	now := time.Unix(1000, 0)
 	l := NewLimiter()
 	l.SetClock(func() time.Time { return now })
+	// Each attempt counts as a failure until Succeed clears it.
 	for i := 0; i < freeFailures; i++ {
-		if l.Wait("u") != 0 {
+		if l.Attempt("u", "addr") != 0 {
 			t.Fatal("throttled within the free failures")
 		}
-		l.Fail("u", "addr")
 	}
-	if l.Wait("u") != 0 {
-		t.Fatal("throttled at the free limit")
+	if w := l.Attempt("u"); w != 0 {
+		t.Fatal("throttled at the free limit", w)
 	}
-	l.Fail("u")
-	if w := l.Wait("u"); w != time.Second {
+	// The sixth failure set a one-second wait.
+	if w := l.Attempt("u"); w != time.Second {
 		t.Fatal(w)
 	}
 	for i := 0; i < 30; i++ {
-		l.Fail("u")
+		now = now.Add(maxDelay)
+		l.Attempt("u")
 	}
-	if w := l.Wait("u"); w != maxDelay {
+	if w := l.Attempt("u"); w != maxDelay {
 		t.Fatal(w)
 	}
 	// Another key is unaffected; success clears.
-	if l.Wait("v") != 0 {
+	if l.Attempt("v") != 0 {
 		t.Fatal("other key throttled")
 	}
 	l.Succeed("u")
-	if l.Wait("u") != 0 {
+	if l.Attempt("u") != 0 {
 		t.Fatal("success did not clear")
 	}
 	// A key quiet for long starts over.
 	for i := 0; i < 8; i++ {
-		l.Fail("w")
+		now = now.Add(time.Minute)
+		l.Attempt("w")
 	}
 	now = now.Add(time.Hour)
-	l.Fail("w")
-	if l.Wait("w") != 0 {
+	l.Attempt("w")
+	if l.Attempt("w") != 0 {
 		t.Fatal("old failures still count")
+	}
+}
+
+func TestPasswordWorkIsBounded(t *testing.T) {
+	// Fill both workers and the queue: the next check is refused at once.
+	for i := 0; i < cap(hashing); i++ {
+		hashing <- struct{}{}
+	}
+	for i := 0; i < cap(waiting); i++ {
+		waiting <- struct{}{}
+	}
+	h := "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g"
+	if _, err := VerifyPassword(context.Background(), h, "x"); err != ErrBusy {
+		t.Fatal(err)
+	}
+	<-waiting
+	// With room in the queue, a cancelled request stops waiting.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := VerifyPassword(ctx, h, "x"); err != context.Canceled {
+		t.Fatal(err)
+	}
+	for i := 0; i < cap(waiting)-1; i++ {
+		<-waiting
+	}
+	for i := 0; i < cap(hashing); i++ {
+		<-hashing
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
 )
 
@@ -21,9 +22,11 @@ type Account struct {
 	Passkeys        int
 }
 
-// Invite is an unused invite (Username empty) or password-reset link.
+// Invite is an unused invite or password-reset link. A reset names its
+// account; an invite may name the account it creates.
 type Invite struct {
 	TokenHash [32]byte
+	Reset     bool
 	Username  string
 	CreatedBy string
 	Created   time.Time
@@ -36,6 +39,7 @@ type Passkey struct {
 	Username   string
 	Name       string
 	Credential []byte
+	SignCount  uint32
 	Created    time.Time
 	LastUsed   time.Time
 }
@@ -44,6 +48,9 @@ var (
 	ErrAccountsExist = errors.New("an account already exists")
 	ErrUsernameTaken = errors.New("username taken")
 	ErrInviteInvalid = errors.New("invite invalid or expired")
+	// ErrAccountChanged refuses a sign-in that raced a password change, a
+	// reset, the account's removal or its passkey's removal.
+	ErrAccountChanged = errors.New("account changed during sign-in")
 )
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
@@ -131,13 +138,17 @@ func (s *Store) CreateInvite(ctx context.Context, v Invite) error {
 	if _, err = tx.ExecContext(ctx, `DELETE FROM local_invites WHERE julianday(expires_at)<=julianday(?)`, stamp(v.Created)); err != nil {
 		return err
 	}
+	kind := "invite"
+	if v.Reset {
+		kind = "reset"
+	}
 	if v.Username != "" {
-		// One reset link per account: a new one replaces the last.
-		if _, err = tx.ExecContext(ctx, `DELETE FROM local_invites WHERE username=?`, v.Username); err != nil {
+		// One link per name: a new one replaces the last.
+		if _, err = tx.ExecContext(ctx, `DELETE FROM local_invites WHERE username=? AND kind=?`, v.Username, kind); err != nil {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO local_invites(token_hash,username,created_by,created_at,expires_at) VALUES (?,?,?,?,?)`, v.TokenHash[:], username, v.CreatedBy, stamp(v.Created), stamp(v.Expires)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO local_invites(token_hash,kind,username,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?)`, v.TokenHash[:], kind, username, v.CreatedBy, stamp(v.Created), stamp(v.Expires)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -160,22 +171,24 @@ func (s *Store) RevokeInvites(ctx context.Context) error {
 func (s *Store) LookupInvite(ctx context.Context, hash [32]byte, now time.Time) (Invite, error) {
 	v := Invite{TokenHash: hash}
 	var username sql.NullString
-	var created, expires string
-	err := s.db.QueryRowContext(ctx, `SELECT username,created_by,created_at,expires_at FROM local_invites WHERE token_hash=? AND julianday(expires_at)>julianday(?)`, hash[:], stamp(now)).Scan(&username, &v.CreatedBy, &created, &expires)
+	var created, expires, kind string
+	err := s.db.QueryRowContext(ctx, `SELECT kind,username,created_by,created_at,expires_at FROM local_invites WHERE token_hash=? AND julianday(expires_at)>julianday(?)`, hash[:], stamp(now)).Scan(&kind, &username, &v.CreatedBy, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrInviteInvalid
 	}
 	if err != nil {
 		return v, err
 	}
-	v.Username = username.String
+	v.Username, v.Reset = username.String, kind == "reset"
 	v.Created, _ = time.Parse(time.RFC3339Nano, created)
 	v.Expires, _ = time.Parse(time.RFC3339Nano, expires)
 	return v, nil
 }
 
-// RedeemInvite uses an invite once: it creates the account username, or for a
-// reset link sets the named account's password and signs it out everywhere.
+// RedeemInvite uses an invite once: it creates the account username (the
+// invite's own name when it has one), or for a reset link sets the named
+// account's password, removes its passkeys and signs it out everywhere: a
+// reset recovers an account, so nothing an intruder added may survive it.
 // It returns the account's username.
 func (s *Store) RedeemInvite(ctx context.Context, hash [32]byte, username, passwordHash string, webauthnID []byte, now time.Time) (string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -183,8 +196,9 @@ func (s *Store) RedeemInvite(ctx context.Context, hash [32]byte, username, passw
 		return "", err
 	}
 	defer tx.Rollback()
-	var reset sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT username FROM local_invites WHERE token_hash=? AND julianday(expires_at)>julianday(?)`, hash[:], stamp(now)).Scan(&reset)
+	var named sql.NullString
+	var kind string
+	err = tx.QueryRowContext(ctx, `SELECT kind,username FROM local_invites WHERE token_hash=? AND julianday(expires_at)>julianday(?)`, hash[:], stamp(now)).Scan(&kind, &named)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrInviteInvalid
 	}
@@ -194,9 +208,18 @@ func (s *Store) RedeemInvite(ctx context.Context, hash [32]byte, username, passw
 	if _, err = tx.ExecContext(ctx, `DELETE FROM local_invites WHERE token_hash=?`, hash[:]); err != nil {
 		return "", err
 	}
-	if reset.Valid {
-		username = reset.String
-		if _, err = tx.ExecContext(ctx, `UPDATE local_accounts SET password_hash=?,password_changed_at=? WHERE username=?`, passwordHash, stamp(now), username); err != nil {
+	if named.Valid {
+		username = named.String
+	}
+	if kind == "reset" {
+		res, err := tx.ExecContext(ctx, `UPDATE local_accounts SET password_hash=?,password_changed_at=? WHERE username=?`, passwordHash, stamp(now), username)
+		if err != nil {
+			return "", err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return "", ErrInviteInvalid
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM passkeys WHERE username=?`, username); err != nil {
 			return "", err
 		}
 		if err = signOutAccountTx(ctx, tx, username, nil); err != nil {
@@ -294,7 +317,7 @@ func (s *Store) RemoveAccount(ctx context.Context, username string) error {
 	if _, err = tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE reader_issuer=? AND reader_subject=?`, config.LocalIssuer, username); err != nil {
 		return err
 	}
-	for _, q := range []string{`DELETE FROM passkeys WHERE username=?`, `DELETE FROM local_invites WHERE username=?`, `DELETE FROM local_accounts WHERE username=?`} {
+	for _, q := range []string{`DELETE FROM passkeys WHERE username=?`, `DELETE FROM local_invites WHERE username=? AND kind='reset'`, `DELETE FROM local_accounts WHERE username=?`} {
 		if _, err = tx.ExecContext(ctx, q, username); err != nil {
 			return err
 		}
@@ -318,7 +341,7 @@ func signOutAccountTx(ctx context.Context, tx *sql.Tx, username string, keep *[3
 
 // AddPasskey stores a new credential.
 func (s *Store) AddPasskey(ctx context.Context, p Passkey) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO passkeys(credential_id,username,name,credential,created_at) VALUES (?,?,?,?,?)`, p.ID, p.Username, p.Name, string(p.Credential), stamp(p.Created))
+	_, err := s.db.ExecContext(ctx, `INSERT INTO passkeys(credential_id,username,name,credential,sign_count,created_at) VALUES (?,?,?,?,?,?)`, p.ID, p.Username, p.Name, string(p.Credential), p.SignCount, stamp(p.Created))
 	return err
 }
 
@@ -351,11 +374,50 @@ func (s *Store) Passkeys(ctx context.Context, username string) ([]Passkey, error
 	return scanPasskeys(rows)
 }
 
-// UsePasskey records a sign-in: the credential's updated state (its signature
-// counter) and when it was used.
-func (s *Store) UsePasskey(ctx context.Context, id, credential []byte, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE passkeys SET credential=?,last_used_at=? WHERE credential_id=?`, string(credential), stamp(now), id)
-	return err
+// PasskeyUse is a passkey sign-in to record with its session: the
+// credential's new state and signature counter.
+type PasskeyUse struct {
+	ID         []byte
+	Credential []byte
+	SignCount  uint32
+}
+
+// InsertLocalSession signs a local account in: in one transaction it checks
+// that the account still exists and its password has not changed since
+// verifiedAt (when the password or passkey check began), records a passkey's
+// use, and inserts the session. A passkey removed meanwhile, or whose counter
+// did not move forward (an authenticator that counts never repeats a value),
+// refuses the sign-in too.
+func (s *Store) InsertLocalSession(ctx context.Context, v auth.Session, verifiedAt time.Time, use *PasskeyUse) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var ok bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM local_accounts WHERE username=? AND julianday(password_changed_at)<=julianday(?))`, v.Subject, stamp(verifiedAt)).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return ErrAccountChanged
+	}
+	if use != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE passkeys SET credential=?,sign_count=?,last_used_at=? WHERE credential_id=? AND username=? AND (?=0 AND sign_count=0 OR sign_count<?)`, string(use.Credential), use.SignCount, stamp(v.Created), use.ID, v.Subject, use.SignCount, use.SignCount)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrAccountChanged
+		}
+	}
+	groups, err := encodeGroups(v.Groups)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO sessions(id_hash,issuer,subject,created_at,expires_at,last_seen_at,csrf,groups,groups_checked) VALUES (?,?,?,?,?,?,?,?,?)`, v.Hash[:], v.Issuer, v.Subject, stamp(v.Created), stamp(v.Expires), stamp(v.LastSeen), v.CSRF, groups, v.GroupsChecked); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RemovePasskey deletes one of an account's credentials.

@@ -64,7 +64,9 @@ type Server struct {
 	limiter        *auth.Limiter
 	setupCode      string
 	passkeys       *webauthn.WebAuthn
-	ceremonies     map[[32]byte]ceremony
+	logins         map[[32]byte]ceremony
+	registrations  map[[32]byte]ceremony
+	ambient        map[string]string
 }
 
 // New builds the reader for the configured sign-in mode. Only oidc contacts
@@ -75,7 +77,7 @@ func New(ctx context.Context, db *store.Store, current func() *config.Config, cl
 		return nil, err
 	}
 	cfg := current()
-	s := &Server{Store: db, Config: current, Weather: weather.New(""), templates: t, pending: map[[32]byte]transaction{}, now: time.Now, limiter: auth.NewLimiter(), ceremonies: map[[32]byte]ceremony{}}
+	s := &Server{Store: db, Config: current, Weather: weather.New(""), templates: t, pending: map[[32]byte]transaction{}, now: time.Now, limiter: auth.NewLimiter(), logins: map[[32]byte]ceremony{}, registrations: map[[32]byte]ceremony{}, ambient: map[string]string{}}
 	switch cfg.AuthMode() {
 	case config.AuthOIDC:
 		return s, s.discover(ctx, clientSecret)

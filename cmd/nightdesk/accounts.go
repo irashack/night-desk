@@ -25,14 +25,14 @@ func accountsCommand(ctx context.Context, c *config.Config, db *store.Store, arg
 		return 1
 	}
 	now := time.Now()
-	link := func(username string) int {
+	link := func(username string, reset bool) int {
 		raw := make([]byte, 32)
 		if _, err := rand.Read(raw); err != nil {
 			return 1
 		}
 		token := base64.RawURLEncoding.EncodeToString(raw)
 		expires := now.Add(c.InviteLifetime())
-		if err := db.CreateInvite(ctx, store.Invite{TokenHash: sha256.Sum256([]byte(token)), Username: username, CreatedBy: "command line", Created: now, Expires: expires}); err != nil {
+		if err := db.CreateInvite(ctx, store.Invite{TokenHash: sha256.Sum256([]byte(token)), Reset: reset, Username: username, CreatedBy: "command line", Created: now, Expires: expires}); err != nil {
 			fmt.Fprintln(errOut, "link creation failed")
 			return 1
 		}
@@ -61,7 +61,19 @@ func accountsCommand(ctx context.Context, c *config.Config, db *store.Store, arg
 	case "invite":
 		// The first account an invite creates on an empty install
 		// administers the others, like one made with the setup code.
-		return link("")
+		if len(args) == 1 {
+			return link("", false)
+		}
+		username, ok := store.NormalUsername(args[1])
+		if !ok {
+			fmt.Fprintln(errOut, "a username is 1 to 64 letters, digits, dots, dashes or underscores, starting with a letter or digit")
+			return 1
+		}
+		if _, err := db.Account(ctx, username); err == nil {
+			fmt.Fprintln(errOut, username+" already has an account; use 'accounts reset'")
+			return 1
+		}
+		return link(username, false)
 	case "reset":
 		username, _ := store.NormalUsername(args[1])
 		if _, err := db.Account(ctx, username); errors.Is(err, sql.ErrNoRows) {
@@ -70,7 +82,7 @@ func accountsCommand(ctx context.Context, c *config.Config, db *store.Store, arg
 		} else if err != nil {
 			return 1
 		}
-		return link(username)
+		return link(username, true)
 	case "remove":
 		username, _ := store.NormalUsername(args[1])
 		if err := db.RemoveAccount(ctx, username); errors.Is(err, sql.ErrNoRows) {

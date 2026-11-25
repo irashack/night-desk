@@ -53,8 +53,8 @@
     reg.hidden = false;
     reg.addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var csrf = reg.getAttribute('data-passkey-register'), name = reg.elements.name.value;
-      post('/account/passkeys/begin', { csrf: csrf }).then(function (o) {
+      var csrf = reg.getAttribute('data-passkey-register'), name = reg.elements.name.value, password = reg.elements.password.value;
+      post('/account/passkeys/begin', { csrf: csrf, password: password }).then(function (o) {
         var pk = o.publicKey;
         pk.challenge = bytes(pk.challenge);
         pk.user.id = bytes(pk.user.id);

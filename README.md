@@ -59,8 +59,12 @@ OpenAI-compatible API, or Claude).
   covered a story and flag blindspots, from a ratings file you provide.
 - **Built to be safe to run.** One Go binary and SQLite. Fetching and model calls
   run in a separate, unprivileged worker that never opens the database. Keys are
-  paper-scoped with explicit capabilities, readers sign in with your OIDC provider,
-  and private network addresses are refused.
+  paper-scoped with explicit capabilities, and private network addresses are
+  refused.
+- **Sign-in your way.** Local accounts with passwords, passkeys and invite links
+  (the default, no identity provider needed), your OIDC provider, a trusted
+  reverse proxy such as Authelia or oauth2-proxy, or no sign-in at all for one
+  reader on a private network.
 
 <p align="center">
   <img src="docs/screenshots/desktop-pages-sepia.png" width="32%" alt="Pages layout in sepia">
@@ -70,37 +74,37 @@ OpenAI-compatible API, or Claude).
 
 ## Quick start
 
-You need a container runtime, an HTTPS reverse proxy and an OIDC provider
-(Pocket ID, Authentik, Keycloak and others work). Images are published for
-linux/amd64 and linux/arm64 at `ghcr.io/irashack/night-desk`; pin one by digest.
+You need a container runtime, and an HTTPS reverse proxy for other devices to
+reach it. Images are published for linux/amd64 and linux/arm64 at
+`ghcr.io/irashack/night-desk`; pin one by digest.
 
 ```sh
 export NIGHTDESK_IMAGE='ghcr.io/irashack/night-desk@sha256:…'   # the release notes list the image digest
 export NIGHTDESK_DIR="$PWD/nightdesk"
 install -d -m 0700 "$NIGHTDESK_DIR"
 
-# Create a configuration, a migrated database and one agent key.
+# Create a configuration, a migrated database and one agent key. Use your HTTPS
+# address for --public-url, or leave it out to try it at http://localhost:8080.
 docker run --rm --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$NIGHTDESK_DIR,dst=/data" \
   "$NIGHTDESK_IMAGE" init --dir /data --paper daily --masthead 'The Daily' --timezone America/Chicago
 
-# Save the OIDC client secret where config.yaml expects it (init does not create it).
-(umask 077; printf '%s\n' 'PASTE_CLIENT_SECRET' > "$NIGHTDESK_DIR/oidc-client-secret")
-
-# Edit $NIGHTDESK_DIR/config.yaml: public URL, OIDC client and your reader identity.
-# Then validate and serve.
-docker run --rm --user "$(id -u):$(id -g)" --mount "type=bind,src=$NIGHTDESK_DIR,dst=/data,readonly" \
-  "$NIGHTDESK_IMAGE" check --config /data/config.yaml
 docker run -d --name nightdesk --restart unless-stopped --user "$(id -u):$(id -g)" \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --publish 127.0.0.1:8080:8080 \
   --mount "type=bind,src=$NIGHTDESK_DIR,dst=/data" \
   "$NIGHTDESK_IMAGE" serve --config /data/config.yaml
+
+# The first visit asks for this one-time setup code, then creates your account.
+docker logs nightdesk 2>&1 | grep setup_code
 ```
 
-Your reader identity is your OIDC issuer and `subject`, the `sub` claim of your
-ID token; most providers show it as the user's ID in their admin UI or userinfo
-response.
+Open the address, enter the setup code and choose a username and password. Invite
+the rest of the household from **Readers** in the Menu. To sign in with an OIDC
+provider (Pocket ID, Authentik, Keycloak and others), a reverse proxy's header, or
+not at all, pass `--auth oidc`, `--auth proxy` or `--auth none` to `init`; the
+[install guide](docs/install.md) and [Reader sign-in](docs/configuration.md#reader-sign-in)
+cover each.
 
 **Next.** A new paper's `agent_role` is `author`, so it stays blank until your
 agent publishes an edition (the install guide has a one-line
@@ -137,8 +141,9 @@ demo paper locally with no configuration at all.
 | `nightdesk serve` | Runs the server: agent API, reader, scheduler and webhook delivery. |
 | `nightdesk migrate` | Applies the embedded, forward-only database migrations. |
 | `nightdesk key` | `issue`, `list` and `revoke` paper-scoped keys; `--worker` selects `read,gather,draft`. |
+| `nightdesk accounts` | `list` local accounts, or print an `invite` or `reset <username>` link; `remove <username>`. |
 | `nightdesk backup <dir>` | Writes a consistent SQLite copy and the retained image store. |
-| `nightdesk init --dir <dir>` | Creates a first configuration, migrated database and agent key. |
+| `nightdesk init --dir <dir>` | Creates a first configuration, migrated database and agent key. `--auth` picks the sign-in mode (`local` by default) and `--public-url` the address readers open. |
 | `nightdesk check --config <file>` | Strictly validates the whole configuration; opens no database and contacts no provider. With `--worker-config <file>` it also validates the worker config and estimates the monthly drafting cost from tier prices. |
 | `nightdesk gather --server <url> --key-file <file>` | Runs the worker; add `--worker-config` to gather and draft, `--once` for one pass. |
 | `nightdesk mcp --server <url> --key-file <file>` | Runs the HTTP-only stdio MCP client. |

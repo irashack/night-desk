@@ -394,13 +394,33 @@ func TestLocalPaperReaders(t *testing.T) {
 		t.Fatalf("ada reads b: %d", r.StatusCode)
 	}
 	_, page = ada.get("/admin")
-	_, page = ada.post("/admin/invite", url.Values{"csrf": {hidden(t, page, "csrf")}})
+	csrf := hidden(t, page, "csrf")
+	// A general invite cannot take the name paper b keeps for bob.
+	_, page = ada.post("/admin/invite", url.Values{"csrf": {csrf}})
+	general := linkPattern.FindString(page)
+	eve := f.browser(t)
+	_, page = eve.get(general)
+	r, page := eve.post(general, url.Values{"form": {hidden(t, page, "form")}, "username": {"bob"}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	expect(t, r, page, http.StatusBadRequest, "kept for someone a paper names")
+	// An invite made for bob can.
+	_, page = ada.post("/admin/invite", url.Values{"csrf": {csrf}, "username": {"Bob"}})
+	if !strings.Contains(page, "Invite created for bob") {
+		t.Fatal(page)
+	}
 	link := linkPattern.FindString(page)
 	bob := f.browser(t)
 	_, page = bob.get(link)
-	bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "username": {"bob"}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	if strings.Contains(page, `name="username"`) || !strings.Contains(page, "<b>bob</b>") {
+		t.Fatal("named invite asks for a username")
+	}
+	// A username posted anyway is ignored.
+	r, page = bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "username": {"mallory"}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	expect(t, r, page, http.StatusSeeOther)
+	if _, err := f.db.Account(context.Background(), "mallory"); err == nil {
+		t.Fatal("named invite created another name")
+	}
 	// bob's own paper is b, and he reads a too.
-	r, page := bob.get("/")
+	r, page = bob.get("/")
 	expect(t, r, page, http.StatusOK, "The B Gazette", "/p/a/")
 	r, page = bob.get("/p/a/")
 	expect(t, r, page, http.StatusOK, "The A Gazette")
@@ -533,7 +553,7 @@ func TestLocalPasskeyOptions(t *testing.T) {
 	if r, _ := postJSON("/account/passkeys/begin", `{"csrf":"forged"}`); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("forged registration: %d", r.StatusCode)
 	}
-	r, v := postJSON("/account/passkeys/begin", `{"csrf":"`+csrf+`"}`)
+	r, v := postJSON("/account/passkeys/begin", `{"csrf":"`+csrf+`","password":"correct horse"}`)
 	pk, _ := v["publicKey"].(map[string]any)
 	rp, _ := pk["rp"].(map[string]any)
 	sel, _ := pk["authenticatorSelection"].(map[string]any)
@@ -565,5 +585,161 @@ func TestLocalPasskeyOptions(t *testing.T) {
 	// The challenge was used up by the failed attempt.
 	if r, _ := postJSON("/login/passkey/finish", `{"form":"`+form+`","credential":{"id":"x"}}`); r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("second attempt: %d", r.StatusCode)
+	}
+}
+
+func TestLocalSignInRacesAccountChanges(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	f.browser(t).setup("ada", "correct horse")
+	ctx := context.Background()
+	before := time.Now()
+	time.Sleep(2 * time.Millisecond)
+	hash, _ := auth.HashPassword("another horse")
+	if err := f.db.SetPassword(ctx, "ada", hash, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	// A sign-in whose check began before the change cannot create a session.
+	now := time.Now()
+	session := auth.Session{Hash: sha256.Sum256([]byte(random())), Issuer: config.LocalIssuer, Subject: "ada", CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)}
+	if err := f.db.InsertLocalSession(ctx, session, before, nil); err != store.ErrAccountChanged {
+		t.Fatal(err)
+	}
+	if err := f.db.InsertLocalSession(ctx, session, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Nor for an account that no longer exists, or a passkey that does not.
+	session.Hash = sha256.Sum256([]byte(random()))
+	if err := f.db.InsertLocalSession(ctx, session, time.Now(), &store.PasskeyUse{ID: []byte("gone"), SignCount: 1}); err != store.ErrAccountChanged {
+		t.Fatal(err)
+	}
+	session.Subject = "nobody"
+	if err := f.db.InsertLocalSession(ctx, session, time.Now(), nil); err != store.ErrAccountChanged {
+		t.Fatal(err)
+	}
+}
+
+func TestPasskeyCounterMustAdvance(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	f.browser(t).setup("ada", "correct horse")
+	ctx := context.Background()
+	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("key"), Username: "ada", Name: "k", Credential: []byte("{}"), SignCount: 5, Created: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	use := func(count uint32) error {
+		now := time.Now()
+		session := auth.Session{Hash: sha256.Sum256([]byte(random())), Issuer: config.LocalIssuer, Subject: "ada", CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)}
+		return f.db.InsertLocalSession(ctx, session, now, &store.PasskeyUse{ID: []byte("key"), Credential: []byte("{}"), SignCount: count})
+	}
+	if err := use(5); err != store.ErrAccountChanged {
+		t.Fatal("a repeated counter signed in")
+	}
+	if err := use(6); err != nil {
+		t.Fatal(err)
+	}
+	if err := use(0); err != store.ErrAccountChanged {
+		t.Fatal("a counter reset to zero signed in")
+	}
+}
+
+func TestResetRemovesPasskeys(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	admin := f.browser(t)
+	admin.setup("ada", "correct horse")
+	ctx := context.Background()
+	_, page := admin.get("/admin")
+	csrf := hidden(t, page, "csrf")
+	_, page = admin.post("/admin/invite", url.Values{"csrf": {csrf}, "username": {"bob"}})
+	link := linkPattern.FindString(page)
+	bob := f.browser(t)
+	_, page = bob.get(link)
+	bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("intruder"), Username: "bob", Name: "k", Credential: []byte("{}"), Created: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	_, page = admin.post("/admin/reset", url.Values{"csrf": {csrf}, "username": {"bob"}})
+	reset := linkPattern.FindString(page)
+	other := f.browser(t)
+	_, page = other.get(reset)
+	expect(t, &http.Response{StatusCode: 200}, page, 200, "passkeys are removed")
+	other.post(reset, url.Values{"form": {hidden(t, page, "form")}, "password": {"new battery staple"}, "confirm": {"new battery staple"}})
+	if keys, _ := f.db.Passkeys(ctx, "bob"); len(keys) != 0 {
+		t.Fatal("passkeys survived a reset")
+	}
+}
+
+func TestPasskeyRegistrationNeedsPassword(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal, Local: config.LocalAuth{Passkeys: true}})
+	b := f.browser(t)
+	b.setup("ada", "correct horse")
+	_, page := b.get("/account")
+	csrf := hidden(t, page, "csrf")
+	post := func(body string) int {
+		req, _ := http.NewRequest("POST", f.http.URL+"/account/passkeys/begin", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", f.cfg.Server.PublicBaseURL)
+		r, err := b.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if code := post(`{"csrf":"` + csrf + `"}`); code != http.StatusUnauthorized {
+		t.Fatalf("no password: %d", code)
+	}
+	if code := post(`{"csrf":"` + csrf + `","password":"wrong"}`); code != http.StatusUnauthorized {
+		t.Fatalf("wrong password: %d", code)
+	}
+	if code := post(`{"csrf":"` + csrf + `","password":"correct horse"}`); code != http.StatusOK {
+		t.Fatalf("right password: %d", code)
+	}
+}
+
+func TestAmbientSessionsAreReused(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthNone})
+	// Clients that keep no cookie share the reader's one session.
+	for i := 0; i < 5; i++ {
+		r, err := http.Get(f.http.URL + "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != http.StatusOK {
+			t.Fatal(r.StatusCode)
+		}
+	}
+	if n := sessions(t, f.db); n != 1 {
+		t.Fatalf("%d sessions for cookieless clients", n)
+	}
+}
+
+func TestPrivateClient(t *testing.T) {
+	for addr, want := range map[string]bool{"127.0.0.1:5": true, "[::1]:5": true, "10.1.2.3:5": true, "100.64.0.9:5": true, "[fd00::1]:5": true, "203.0.113.4:5": false, "[2001:db8::1]:5": false, "junk": false} {
+		if got := privateClient(&http.Request{RemoteAddr: addr}); got != want {
+			t.Errorf("%s: %v", addr, got)
+		}
+	}
+	// Behind a proxy (a private address) accounts are throttled alone; a
+	// public client is throttled by address too.
+	if keys := limitKeys(&http.Request{RemoteAddr: "10.0.0.2:5"}, "user:a"); len(keys) != 1 {
+		t.Fatal(keys)
+	}
+	if keys := limitKeys(&http.Request{RemoteAddr: "203.0.113.4:5"}, "user:a"); len(keys) != 2 || keys[1] != "addr:203.0.113.4" {
+		t.Fatal(keys)
+	}
+}
+
+func TestSessionsFromOtherModesAreDeleted(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	ctx := context.Background()
+	now := time.Now()
+	for _, issuer := range []string{"https://id.example", config.LocalIssuer, config.NoneIssuer} {
+		if err := f.db.InsertSession(ctx, auth.Session{Hash: sha256.Sum256([]byte(issuer)), Issuer: issuer, Subject: "x", CSRF: "c", Created: now, LastSeen: now, Expires: now.Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := f.db.DeleteSessionsNotFrom(ctx, f.cfg.AcceptsIssuer)
+	if err != nil || n != 2 || sessions(t, f.db) != 1 {
+		t.Fatal(n, err)
 	}
 }
