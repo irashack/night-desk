@@ -35,7 +35,7 @@ func TestForecastCache(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			d := c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-27")
+			d := c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-27", false)
 			if d == nil || d.High != 78 || d.Low != 61 || d.Description() != "Clear" || d.Wind != 9 {
 				t.Error("bad forecast")
 			}
@@ -45,10 +45,10 @@ func TestForecastCache(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatal("concurrent cache miss duplicated fetches", calls.Load())
 	}
-	if d := c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-26"); d != nil {
+	if d := c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-26", false); d != nil {
 		t.Fatal("forecast invented for missing date")
 	}
-	_ = c.Forecast(context.Background(), "b", 41.8781, -87.6298, "America/Chicago", "2026-10-27")
+	_ = c.Forecast(context.Background(), "b", 41.8781, -87.6298, "America/Chicago", "2026-10-27", false)
 	if calls.Load() != 2 {
 		t.Fatal("paper caches not distinct")
 	}
@@ -57,7 +57,7 @@ func TestForecastCache(t *testing.T) {
 		e.until = time.Now().Add(-time.Second)
 	}
 	c.mu.Unlock()
-	_ = c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-27")
+	_ = c.Forecast(context.Background(), "a", 41.8781, -87.6298, "America/Chicago", "2026-10-27", false)
 	if calls.Load() != 3 {
 		t.Fatal("cache did not expire")
 	}
@@ -79,7 +79,7 @@ func TestFailureAndTimeout(t *testing.T) {
 			c := New(srv.URL)
 			c.HTTP.Transport = network.Transport()
 			for i := 0; i < 2; i++ {
-				if c.Forecast(context.Background(), "a", 0, 0, "UTC", "2026-10-27") != nil {
+				if c.Forecast(context.Background(), "a", 0, 0, "UTC", "2026-10-27", false) != nil {
 					t.Fatal("failure returned invented weather")
 				}
 			}
@@ -99,10 +99,28 @@ func TestFailureAndTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if c.Forecast(ctx, "a", 0, 0, "UTC", "2026-10-27") != nil {
+	if c.Forecast(ctx, "a", 0, 0, "UTC", "2026-10-27", false) != nil {
 		t.Fatal("timeout returned weather")
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("did not respect caller deadline")
+	}
+}
+
+func TestForecastMetric(t *testing.T) {
+	network := testhttp.New()
+	var units []string
+	srv := network.Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		units = append(units, r.URL.Query().Get("temperature_unit")+"/"+r.URL.Query().Get("wind_speed_unit"))
+		_, _ = w.Write([]byte(forecast))
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	c.HTTP.Transport = network.Transport()
+	c.Forecast(context.Background(), "a", 1, 2, "UTC", "2026-10-27", true)
+	c.Forecast(context.Background(), "a", 1, 2, "UTC", "2026-10-27", false)
+	// Metric and imperial are cached apart.
+	if strings.Join(units, " ") != "celsius/kmh fahrenheit/mph" {
+		t.Fatal(units)
 	}
 }

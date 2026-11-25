@@ -327,7 +327,7 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 			v.Facts = almanac.Compute(parsed, *v.Paper.Latitude, *v.Paper.Longitude, loc)
 		}
 		if v.Paper.Boxes.Weather && s.Weather != nil {
-			v.Weather = s.Weather.Forecast(r.Context(), v.Paper.ID, *v.Paper.Latitude, *v.Paper.Longitude, v.Paper.Timezone, date)
+			v.Weather = s.Weather.Forecast(r.Context(), v.Paper.ID, *v.Paper.Latitude, *v.Paper.Longitude, v.Paper.Timezone, date, v.Paper.Metric())
 		}
 	}
 	s.render(w, "edition", v)

@@ -704,3 +704,33 @@ func TestLoginFloodCannotLockReadersOut(t *testing.T) {
 		t.Fatalf("Permissions-Policy %q", got)
 	}
 }
+
+func TestWeatherUnits(t *testing.T) {
+	for _, metric := range []bool{false, true} {
+		f := setup(t)
+		f.cfg.Papers[0].Boxes = config.Boxes{Weather: true}
+		if metric {
+			f.cfg.Papers[0].Units = "metric"
+		}
+		f.publish(t, f.a, "2026-10-27", sampleEdition(), nil)
+		network := testhttp.New()
+		var asked string
+		srv := network.Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked = r.URL.Query().Get("temperature_unit") + "/" + r.URL.Query().Get("wind_speed_unit")
+			fmt.Fprint(w, `{"daily":{"time":["2026-10-27"],"temperature_2m_max":[21],"temperature_2m_min":[12],"weather_code":[0],"wind_speed_10m_max":[14]}}`)
+		}))
+		f.s.Weather = weather.New(srv.URL)
+		f.s.Weather.HTTP.Transport = network.Transport()
+		f.signIn(t, "").Body.Close()
+		html := body(t, f.get(t, "/"))
+		srv.Close()
+		want, wantAsked := "21° / 12°F", "fahrenheit/mph"
+		wind := "14 mph"
+		if metric {
+			want, wantAsked, wind = "21° / 12°C", "celsius/kmh", "14 km/h"
+		}
+		if asked != wantAsked || !strings.Contains(html, want) || !strings.Contains(html, wind) {
+			t.Fatalf("metric=%v asked %s", metric, asked)
+		}
+	}
+}

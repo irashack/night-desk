@@ -59,18 +59,23 @@ type Paper struct {
 	ID             string    `json:"id"`
 	Masthead       string    `json:"masthead"`
 	Place          string    `json:"place,omitempty"`
-	Brief          *string   `json:"brief,omitempty"`
-	Deadline       *string   `json:"deadline,omitempty"`
-	Motto          *Motto    `json:"motto,omitempty"`
-	Look           string    `json:"look"`
-	Timezone       string    `json:"timezone"`
-	Latitude       *float64  `json:"latitude"`
-	Longitude      *float64  `json:"longitude"`
-	Sections       []Section `json:"sections"`
-	Boxes          Boxes     `json:"boxes"`
-	Readers        []Reader  `json:"readers"`
-	Sources        []Source  `json:"sources"`
-	RetentionDays  int       `json:"retention_days"`
+	// Units is imperial (the default: °F, mph) or metric (°C, km/h).
+	Units string `json:"units,omitempty"`
+	// Locale is a language and region, such as en-GB, for the paper's news
+	// searches (Google News). The default is en-US.
+	Locale        string    `json:"locale,omitempty"`
+	Brief         *string   `json:"brief,omitempty"`
+	Deadline      *string   `json:"deadline,omitempty"`
+	Motto         *Motto    `json:"motto,omitempty"`
+	Look          string    `json:"look"`
+	Timezone      string    `json:"timezone"`
+	Latitude      *float64  `json:"latitude"`
+	Longitude     *float64  `json:"longitude"`
+	Sections      []Section `json:"sections"`
+	Boxes         Boxes     `json:"boxes"`
+	Readers       []Reader  `json:"readers"`
+	Sources       []Source  `json:"sources"`
+	RetentionDays int       `json:"retention_days"`
 }
 type Section struct {
 	Lean     bool     `json:"lean"`
@@ -183,6 +188,21 @@ const readerRule = "exactly one of subject, subject_file and group is required"
 var slug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 var htmlTag = regexp.MustCompile(`<[/!?]?[a-zA-Z]`)
 var deadline = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
+var localePattern = regexp.MustCompile(`^[a-z]{2,3}-[A-Z]{2}$`)
+
+// Metric reports whether the paper shows metric units.
+func (p Paper) Metric() bool { return p.Units == "metric" }
+
+// NewsLocale is the paper's locale (default en-US) and its region, as Google
+// News takes them (hl and gl).
+func (p Paper) NewsLocale() (locale, region string) {
+	locale = p.Locale
+	if locale == "" {
+		locale = "en-US"
+	}
+	_, region, _ = strings.Cut(locale, "-")
+	return locale, region
+}
 
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
@@ -436,6 +456,12 @@ func (c *Config) Validate() error {
 		p.Editorial().check(add, b, true)
 		if p.Look != "broadsheet" {
 			add(b+"look", "must be broadsheet")
+		}
+		if p.Units != "" && p.Units != "imperial" && p.Units != "metric" {
+			add(b+"units", "must be imperial or metric")
+		}
+		if p.Locale != "" && !localePattern.MatchString(p.Locale) {
+			add(b+"locale", "must be a language and region such as en-US or fr-CA")
 		}
 		if _, e := time.LoadLocation(p.Timezone); e != nil || p.Timezone == "" || p.Timezone == "Local" {
 			add(b+"timezone", "must be an IANA timezone")

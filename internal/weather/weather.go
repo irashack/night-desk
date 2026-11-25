@@ -36,10 +36,13 @@ func New(baseURL string) *Client {
 	}
 	return &Client{BaseURL: baseURL, HTTP: &http.Client{Timeout: 5 * time.Second}, cache: map[string]*entry{}}
 }
-func (c *Client) Forecast(ctx context.Context, paper string, lat, lon float64, zone, date string) *Day {
+
+// Forecast returns date's forecast, in metric units (°C, km/h) when metric
+// is set and imperial (°F, mph) otherwise.
+func (c *Client) Forecast(ctx context.Context, paper string, lat, lon float64, zone, date string, metric bool) *Day {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	key := fmt.Sprintf("%s/%g/%g/%s", paper, lat, lon, zone)
+	key := fmt.Sprintf("%s/%g/%g/%s/%v", paper, lat, lon, zone, metric)
 	c.mu.Lock()
 	e := c.cache[key]
 	if e != nil && e.loading != nil {
@@ -47,7 +50,7 @@ func (c *Client) Forecast(ctx context.Context, paper string, lat, lon float64, z
 		c.mu.Unlock()
 		select {
 		case <-ch:
-			return c.Forecast(ctx, paper, lat, lon, zone, date)
+			return c.Forecast(ctx, paper, lat, lon, zone, date, metric)
 		case <-ctx.Done():
 			return nil
 		}
@@ -59,7 +62,7 @@ func (c *Client) Forecast(ctx context.Context, paper string, lat, lon float64, z
 	e = &entry{loading: make(chan struct{})}
 	c.cache[key] = e
 	c.mu.Unlock()
-	days := c.fetch(ctx, lat, lon, zone)
+	days := c.fetch(ctx, lat, lon, zone, metric)
 	c.mu.Lock()
 	e.days = days
 	e.until = time.Now().Add(time.Hour)
@@ -76,7 +79,7 @@ func find(days []Day, date string) *Day {
 	}
 	return nil
 }
-func (c *Client) fetch(ctx context.Context, lat, lon float64, zone string) []Day {
+func (c *Client) fetch(ctx context.Context, lat, lon float64, zone string, metric bool) []Day {
 	u, err := url.Parse(c.BaseURL)
 	if err != nil {
 		return nil
@@ -86,8 +89,13 @@ func (c *Client) fetch(ctx context.Context, lat, lon float64, zone string) []Day
 	q.Set("longitude", strconv.FormatFloat(lon, 'f', -1, 64))
 	q.Set("timezone", zone)
 	q.Set("daily", "temperature_2m_max,temperature_2m_min,weather_code,wind_speed_10m_max")
-	q.Set("temperature_unit", "fahrenheit")
-	q.Set("wind_speed_unit", "mph")
+	if metric {
+		q.Set("temperature_unit", "celsius")
+		q.Set("wind_speed_unit", "kmh")
+	} else {
+		q.Set("temperature_unit", "fahrenheit")
+		q.Set("wind_speed_unit", "mph")
+	}
 	u.RawQuery = q.Encode()
 	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {

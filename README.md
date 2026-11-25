@@ -99,7 +99,11 @@ docker logs nightdesk 2>&1 | grep setup_code
 ```
 
 Open the address, enter the setup code and choose a username and password. Invite
-the rest of the household from **Readers** in the Menu. To sign in with an OIDC
+the rest of the household from **Readers** in the Menu. For a paper Night Desk
+writes itself, from news searches and with or without a model, add `--standalone`
+(or `--interactive` to be asked each setting, including metric units and your news
+locale) to `init`; the [install guide](docs/install.md#a-paper-night-desk-writes-itself)
+has the rest. To sign in with an OIDC
 provider (Pocket ID, Authentik, Keycloak and others), a reverse proxy's header, or
 not at all, pass `--auth oidc`, `--auth proxy` or `--auth none` to `init`; the
 [install guide](docs/install.md) and [Reader sign-in](docs/configuration.md#reader-sign-in)
@@ -151,7 +155,7 @@ binary.
 | `nightdesk key` | `issue`, `list` and `revoke` paper-scoped keys; `--worker` selects `read,gather,draft`. |
 | `nightdesk accounts` | `list` local accounts, or print an `invite` or `reset <username>` link; `remove <username>`. |
 | `nightdesk backup <dir>` | Writes a consistent SQLite copy and the retained image store. |
-| `nightdesk init --dir <dir>` | Creates a first configuration, migrated database and agent key. `--auth` picks the sign-in mode (`local` by default) and `--public-url` the address readers open. |
+| `nightdesk init --dir <dir>` | Creates a first configuration, migrated database and agent key. `--auth` picks the sign-in mode (`local` by default) and `--public-url` the address readers open; `--standalone` (or `--interactive`) sets up a paper Night Desk writes itself, with `--deadline`, `--sections`, `--units`, `--locale`, `--place` and `--coordinates`. |
 | `nightdesk check --config <file>` | Strictly validates the whole configuration; opens no database and contacts no provider. With `--worker-config <file>` it also validates the worker config and estimates the monthly drafting cost from tier prices. |
 | `nightdesk gather --server <url> --key-file <file>` | Runs the worker; add `--worker-config` to gather and draft, `--once` for one pass. |
 | `nightdesk mcp --server <url> --key-file <file>` | Runs the HTTP-only stdio MCP client. |
