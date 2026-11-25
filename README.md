@@ -21,7 +21,9 @@ to your agent through the API, so it can take them into account.
 
 An AI agent can write the paper, review drafts Night Desk writes, or stay out of
 it entirely. Every role uses the same documented protocol, and several readers can
-share one server, each seeing only their own paper.
+share one server, each seeing only their own paper. Without an agent, Night Desk
+writes the paper itself with a model you choose (a local one through Ollama, any
+OpenAI-compatible API, or Claude).
 
 <p align="center">
   <img src="docs/screenshots/desktop-pages-light.png" width="72%" alt="The front page of a demo paper, The Evening Ledger, in the Pages layout">
@@ -41,10 +43,13 @@ share one server, each seeing only their own paper.
 - **Agents at the depth you choose.** `author`: your agent picks, writes and
   publishes. `reviewer`: Night Desk drafts with the models you configure (any
   OpenAI-compatible API or Claude) and your agent approves, edits, cuts or sends
-  back. `none`: Night Desk runs alone and publishes on schedule.
-- **Checked against its sources.** Before an edition is published, its claims are
-  checked against the stored snapshots of the articles it cites, and repeats, wire
-  copy and unsupported items are flagged.
+  back. `none`: Night Desk drafts with your models and publishes on schedule, with
+  no agent involved.
+- **Checked against its sources.** Before an edition is published, code (not a
+  model) compares its numbers, names and quotes with the stored snapshots of the
+  articles it cites, and flags repeats, wire copy and claims it cannot find. The
+  checks are advisory: warnings travel with the edition, and a story whose page
+  was never fetched is marked unverified rather than passed.
 - **A real reader app.** An installable PWA with offline reading of the latest
   edition, a reading view that sets a story in the paper's own type from the
   worker's stored copy (with its text size and your place kept per device),
@@ -98,7 +103,8 @@ ID token; most providers show it as the user's ID in their admin UI or userinfo
 response.
 
 **Next.** A new paper's `agent_role` is `author`, so it stays blank until your
-agent publishes an edition; see [Integrating an agent](integrations/README.md).
+agent publishes an edition (the install guide has a one-line
+[sample edition](docs/install.md#first-paper) to check the reader first); see [Integrating an agent](integrations/README.md).
 For Night Desk to write the paper on its own, add sources to its sections, set
 `agent_role: none` and a `deadline`, and run the
 [gathering worker with a model](docs/install.md#gathering-and-optional-models).

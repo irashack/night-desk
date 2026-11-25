@@ -48,7 +48,7 @@ papers:
         title: Economy
         required: true
         brief: Focus on household costs and local effects.
-    boxes: {weather: true, sun: true, solunar: true, markets: false}
+    boxes: {weather: true, sun: true, solunar: true, markets: false}  # markets show in a section keyed economy
     readers:
       - issuer: https://identity.example
         subject_file: /run/secrets/reader-subject
