@@ -137,7 +137,7 @@ var entityStopwords = map[string]struct{}{
 	"From": {}, "By": {}, "As": {}, "Of": {}, "Monday": {}, "Tuesday": {}, "Wednesday": {}, "Thursday": {},
 	"Friday": {}, "Saturday": {}, "Sunday": {}, "January": {}, "February": {}, "March": {}, "April": {},
 	"May": {}, "June": {}, "July": {}, "August": {}, "September": {}, "October": {}, "November": {},
-	"December": {},
+	"December": {}, "You": {}, "Your": {}, "Our": {}, "His": {}, "Her": {}, "Its": {}, "Their": {},
 }
 
 var entityRE = regexp.MustCompile(`\b([A-Z][a-z]{2,})\b`)

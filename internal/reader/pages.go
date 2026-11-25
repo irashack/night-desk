@@ -30,6 +30,9 @@ type itemView struct {
 	// Read is the reading view's address when the paper holds the story's
 	// text; empty means only the link to the outlet.
 	Read string
+	// Provenance is what the source checks found when the edition was
+	// published; nil when no record remains.
+	Provenance *provenanceView
 }
 
 // opinionView is an opinion column shown beside the story it argues about. Lean
@@ -66,17 +69,19 @@ type view struct {
 	Dates                                []string
 	Previous, Next                       int
 	Unreviewed                           bool
-	Logout                               bool
-	FrontNavigation                      pageNavigation
-	Query                                string
-	SavedOnly                            bool
-	Results                              []store.SearchResult
-	Editing                              bool
-	Rows                                 []sectionRow
-	Confirm                              *sectionRow
-	Problems                             []string
-	AddTitle, AddBrief                   string
-	PushKey                              string
+	// Checked is when the edition's stories were checked against their sources.
+	Checked            string
+	Logout             bool
+	FrontNavigation    pageNavigation
+	Query              string
+	SavedOnly          bool
+	Results            []store.SearchResult
+	Editing            bool
+	Rows               []sectionRow
+	Confirm            *sectionRow
+	Problems           []string
+	AddTitle, AddBrief string
+	PushKey            string
 	// Base prefixes the paper's own links: empty for the session's default
 	// paper, /p/{paper} for the others it reads.
 	Base   string
@@ -257,6 +262,11 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Reader unavailable", 500)
 		return
 	}
+	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone), v.Paper.RetentionDays)
+	if err != nil {
+		http.Error(w, "Reader unavailable", 500)
+		return
+	}
 	for _, cfg := range sections {
 		section := sectionView{Key: cfg.Key, Title: cfg.Title, Page: len(v.Sections) + 2}
 		var opinions []itemView
@@ -278,6 +288,10 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				iv.Opinions = attached[it.ID]
+				if pv := checks[it.ID]; pv != nil {
+					iv.Provenance = pv
+					v.Checked = pv.Checked
+				}
 				if it.Kind == "opinion" {
 					if it.About == nil || kinds[*it.About] == "" || kinds[*it.About] == "opinion" {
 						opinions = append(opinions, iv)
