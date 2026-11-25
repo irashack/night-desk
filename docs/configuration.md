@@ -118,7 +118,7 @@ gathers from a Google News search on its title as well as the paper's feeds, and
 worker with models asks its fast model (prompt `find-sources`) at most daily for
 publications' feeds, keeping up to five that it fetched and parsed itself; three
 verified feeds retire the search. Sections added from the reader set it.
-`retention_days` defaults to 14 (1–90). `gather.allow_private` lists exact
+`retention_days` defaults to 14 (1–90); the server removes older snapshots hourly, whether or not a worker is running. `gather.allow_private` lists exact
 `host:port` exceptions for local feed services. `papers[].filters` drops junk
 before its page is fetched: built-in rules for betting picks, fantasy advice,
 roundups and editorial cartoons (each may be listed in `disabled`), plus

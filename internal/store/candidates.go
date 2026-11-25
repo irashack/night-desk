@@ -240,10 +240,20 @@ func (s *Store) PruneCandidates(ctx context.Context, scope auth.PaperScope, rete
 	if err != nil {
 		return err
 	}
+	return s.pruneCandidates(ctx, paper, retentionDays)
+}
+
+// RunPruneCandidates is PruneCandidates for the trusted scheduler, using
+// operator-configured paper IDs, so snapshots expire even when no worker uploads.
+func (s *Store) RunPruneCandidates(ctx context.Context, paper string, retentionDays int) error {
+	return s.pruneCandidates(ctx, paper, retentionDays)
+}
+
+func (s *Store) pruneCandidates(ctx context.Context, paper string, retentionDays int) error {
 	if retentionDays < 1 || retentionDays > 90 {
 		return errors.New("retention_days: must be between 1 and 90")
 	}
-	_, err = s.db.ExecContext(ctx, "DELETE FROM candidates WHERE paper_id=? AND fetched_at<?", paper, time.Now().UTC().AddDate(0, 0, -retentionDays).Format(candidateTime))
+	_, err := s.db.ExecContext(ctx, "DELETE FROM candidates WHERE paper_id=? AND fetched_at<?", paper, time.Now().UTC().AddDate(0, 0, -retentionDays).Format(candidateTime))
 	return err
 }
 

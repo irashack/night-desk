@@ -24,7 +24,13 @@ type Scheduler struct {
 	Publisher PolicyApplier
 	Now       func() time.Time
 	Log       *slog.Logger
+
+	pruned time.Time
 }
+
+// pruneEvery is how often the scheduler removes candidate snapshots older than
+// each paper's retention window. Uploads from a worker also prune.
+const pruneEvery = time.Hour
 
 // Deadline chooses the first occurrence of an ambiguous local minute. On a spring
 // gap it chooses the first real local minute at or after the requested wall time.
@@ -79,6 +85,10 @@ func (s *Scheduler) Run(ctx context.Context) {
 // Tick is exported for deterministic tests with an injected Now function.
 func (s *Scheduler) Tick(ctx context.Context) {
 	now := s.now()
+	if s.pruned.IsZero() || now.Sub(s.pruned) >= pruneEvery {
+		s.pruned = now
+		s.prune(ctx)
+	}
 	for _, p := range s.Config().Papers {
 		if ctx.Err() != nil {
 			return
@@ -95,6 +105,23 @@ func (s *Scheduler) Tick(ctx context.Context) {
 		date := now.In(loc).Format("2006-01-02")
 		if err = s.paper(ctx, p, date, !now.Before(deadline)); err != nil {
 			s.failed(p.ID)
+		}
+	}
+}
+
+// prune applies every paper's retention to its candidate snapshots, whether or
+// not the paper has a deadline or a running worker.
+func (s *Scheduler) prune(ctx context.Context) {
+	for _, p := range s.Config().Papers {
+		if ctx.Err() != nil {
+			return
+		}
+		days := p.RetentionDays
+		if days == 0 {
+			days = 14
+		}
+		if err := s.Store.RunPruneCandidates(ctx, p.ID, days); err != nil && s.Log != nil {
+			s.Log.Error("candidate retention failed", "paper", p.ID)
 		}
 	}
 }
