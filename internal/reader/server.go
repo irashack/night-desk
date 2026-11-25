@@ -371,21 +371,11 @@ func unauthorized(w http.ResponseWriter, r *http.Request) {
 
 // signIn is the page before the identity provider: the logo's artwork under a
 // desk-lamp glow and one link. It is static, so it needs no session and
-// reveals nothing about any paper.
-const signIn = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0c0c0d"><meta name="color-scheme" content="dark"><title>Night Desk</title>` +
+// reveals nothing about any paper. Its styles are a static file because the
+// CSP allows no inline style.
+var signIn = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0c0c0d"><meta name="color-scheme" content="dark"><title>Night Desk</title>` +
 	`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="icon" href="/static/icon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">` +
-	`<style>@font-face{font-family:Old Standard TT;src:url(/static/fonts/oldstandard-italic.woff2) format('woff2');font-style:italic;font-display:swap}` +
-	`@font-face{font-family:Libre Franklin;src:url(/static/fonts/librefranklin-var.woff2) format('woff2');font-weight:100 900;font-display:swap}` +
-	`*{box-sizing:border-box}html{background:#0c0c0d}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:32px 20px max(32px,env(safe-area-inset-bottom));color:#efe8dc;` +
-	`background:radial-gradient(60vmax 44vmax at 50% 30%,rgba(255,178,96,.13),rgba(255,178,96,.04) 45%,transparent 70%),#0c0c0d;font-family:Libre Franklin,system-ui,sans-serif}` +
-	`main{width:min(100%,420px);display:grid;justify-items:center;text-align:center;animation:rise .9s cubic-bezier(.2,.7,.2,1) both}` +
-	`h1{margin:0;width:100%}h1 img{display:block;width:100%;height:auto}` +
-	`p{margin:0}.tag{margin-top:6px;font:italic 19px/1.4 Old Standard TT,Georgia,serif;color:#cfc6b8}` +
-	`a{margin-top:30px;display:inline-flex;align-items:center;gap:10px;padding:15px 30px;border-radius:999px;background:#efe8dc;color:#141416;font-weight:600;font-size:15px;letter-spacing:.02em;text-decoration:none;` +
-	`box-shadow:0 0 0 1px rgba(255,214,160,.25),0 10px 40px -10px rgba(255,170,80,.45);transition:transform .2s,box-shadow .2s}` +
-	`a:hover{transform:translateY(-1px);box-shadow:0 0 0 1px rgba(255,214,160,.4),0 14px 48px -10px rgba(255,170,80,.6)}a:focus-visible{outline:2px solid #e2582f;outline-offset:4px}` +
-	`.note{margin-top:18px;font-size:12.5px;color:#8a847a;letter-spacing:.01em}` +
-	`@keyframes rise{from{opacity:0;transform:translateY(10px)}}@media(prefers-reduced-motion:reduce){main{animation:none}a{transition:none}}</style></head>` +
+	`<link rel="stylesheet" href="` + asset("signin.css") + `"></head>` +
 	`<body data-logout="true"><main><h1><img src="/static/signin-art.png" width="640" height="420" alt="Night Desk"></h1>` +
 	`<p class="tag">Your paper, set overnight.</p><a href="/login">Sign in to Night Desk <span aria-hidden="true">→</span></a>` +
 	`<p class="note">You will continue to your sign-in page and come straight back.</p></main><script defer src="/static/app.js"></script></body></html>`
