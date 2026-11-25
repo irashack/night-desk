@@ -1,8 +1,10 @@
 # Install Night Desk
 
-Night Desk needs persistent local storage, an HTTPS reverse proxy, and an OIDC
-provider that supports authorization code flow with PKCE. SQLite is embedded;
-no external database or other service is required. The official image is
+Night Desk needs persistent local storage and, to reach it from other devices,
+an HTTPS reverse proxy. Readers sign in with password accounts (and passkeys) kept
+by Night Desk itself; an OIDC provider or an authenticating reverse proxy can do it
+instead (see [Reader sign-in](configuration.md#reader-sign-in)). SQLite is
+embedded; no external database or other service is required. The official image is
 `ghcr.io/irashack/night-desk`, published for linux/amd64 and linux/arm64 with
 `X.Y.Z`, `X.Y` and `latest` tags; pin it by digest (each release's notes list
 the image digest). You can also build one with
@@ -22,8 +24,13 @@ install -d -m 0700 "$NIGHTDESK_DIR"
 "$ENGINE" run --rm --user "$NIGHTDESK_UID:$NIGHTDESK_GID" \
   --mount "type=bind,src=$NIGHTDESK_DIR,dst=/data" \
   "$NIGHTDESK_IMAGE" init --dir /data \
-  --paper daily --masthead 'The Daily' --timezone America/Chicago
+  --paper daily --masthead 'The Daily' --timezone America/Chicago \
+  --public-url https://paper.example
 ```
+
+`--public-url` is the address readers open: your HTTPS origin, or leave it out for
+`http://localhost:8080` while you try Night Desk on this machine. `--auth` chooses
+the sign-in mode: `local` (the default), `oidc`, `proxy` or `none`.
 
 `init` writes `config.yaml`, migrates `nightdesk.db`, and creates exactly
 one paper-scoped agent key in `agent.key` (0600), without printing it. The key has
@@ -33,13 +40,30 @@ sidecar files are refused. Provision once; do not run `init` against an existing
 installation. Transfer `agent.key` directly into your agent's secret store, without
 putting its contents in commands, logs or git.
 
-Edit `config.yaml` before starting:
+With the default `local` sign-in, the generated configuration is ready to serve:
+the first account is created in the browser (below), and every account reads the
+paper because its `readers` list is empty. Review `config.yaml` before starting:
 
-- Set `server.public_base_url` to your HTTPS origin, such as
-  `https://paper.example`. Register `https://paper.example/auth/callback` as the
-  OIDC client's redirect URL. If your provider shows an icon for each application
-  on its login and dashboard pages (Authentik, Pocket ID, Keycloak and others do),
-  upload `docs/brand/night-desk-icon-512.png` as the client's icon.
+- `server.public_base_url` must be the origin readers open. Passkeys need a domain
+  name there, not an IP address.
+- Choose `agent_role` (`author`, `reviewer` or `none`) and `deadline_policy`
+  (`hold` or `publish-unreviewed`); the defaults are `author` and `hold`.
+- Adjust the paper's sections, timezone and coordinates. The generated zero
+  coordinates are placeholders; weather, sun and solunar boxes default off.
+
+**With an authenticating proxy** (`--auth proxy`), set
+`server.auth.proxy.trusted_proxies` to the address your proxy connects from, and
+add the proxy's user names as readers: `readers: [{subject: alice}]`. With no
+sign-in at all (`--auth none`), keep the server on a private network; see
+[Reader sign-in](configuration.md#reader-sign-in).
+
+**With OIDC** (`--auth oidc`), also:
+
+- Register `https://paper.example/auth/callback` as the OIDC client's redirect URL.
+  The provider must support authorization code flow with PKCE. If your provider
+  shows an icon for each application on its login and dashboard pages (Authentik,
+  Pocket ID, Keycloak and others do), upload `docs/brand/night-desk-icon-512.png` as
+  the client's icon.
 - Set `server.oidc.issuer` to the provider's exact issuer and `client_id` to the
   registered client ID. `scopes` defaults to `[openid]`. Provision its client
   secret as a private file; `client_secret_file: oidc-client-secret` refers to
@@ -57,12 +81,8 @@ Edit `config.yaml` before starting:
   Alternatively, use an absolute `subject_file` path accessible inside the
   container. To let a whole provider group read a paper, use
   `{issuer: ..., group: "group-name"}` instead (see
-  [Group readers](configuration.md#group-readers)). The generated empty reader list
-  grants nobody access.
-- Choose `agent_role` (`author`, `reviewer` or `none`) and `deadline_policy`
-  (`hold` or `publish-unreviewed`); the defaults are `author` and `hold`.
-- Adjust the paper's sections, timezone and coordinates. The generated zero
-  coordinates are placeholders; weather, sun and solunar boxes default off.
+  [Group readers](configuration.md#group-readers)). With OIDC the generated empty
+  reader list grants nobody access.
 
 Keep `server.listen: "0.0.0.0:8080"` inside the container and `data_dir: .` when
 the config is in `/data`. Relative server paths resolve beside the config file.
@@ -88,7 +108,19 @@ Validate, then start:
 exact paths and rules on failure. It creates no database, contacts no provider,
 and does not test client-secret readability or OIDC discovery; `serve` checks
 those at startup. Point your HTTPS proxy at port 8080; `/healthz` is the health
-endpoint. Open `/` to sign in. Keep `/data` on persistent storage across restarts.
+endpoint. Keep `/data` on persistent storage across restarts.
+
+Open the public URL. With `local` sign-in it asks for the setup code that `serve`
+printed when it started:
+
+```sh
+"$ENGINE" logs nightdesk 2>&1 | grep setup_code
+```
+
+Enter it with a username and password to create the first account, which is an
+administrator. Invite the other readers from **Readers** in the Menu; add a
+passkey under **Account**. On a headless install, `nightdesk accounts invite
+--config /data/config.yaml` prints an invite link instead.
 
 A new paper is blank until something publishes to it. To check sign-in and the
 reader before connecting an agent or a model, publish a one-story sample edition
@@ -135,7 +167,7 @@ install -d -m 0700 "$NIGHTDESK_BACKUPS"
 
 This captures a consistent SQLite snapshot, retained immutable `images/` and,
 when web push is set up, the push key `vapid.key` (mode 0600); it can run while
-serving. Separately save the matching config, OIDC secret,
+serving. Separately save the matching config, OIDC secret (if any),
 any subject files, webhook secret files, ratings file, operator key hash and the
 worker's directory (`worker.yaml`, its model keys and prompt overrides) using your
 secret-management tooling. Raw agent keys are not

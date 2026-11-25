@@ -28,15 +28,17 @@ Desk as data before drafting, not only as a final review: paper and section
 briefs, reader notes the agent maintains (interests, topics to avoid, what landed
 well) and the reader feedback it reads back.
 
-The reader signs in with OIDC and gets an installable web app with Pages, List and
+The reader signs in (with a local account, OIDC or a trusted reverse proxy) and gets an installable web app with Pages, List and
 Reader layouts in light, sepia and dark modes, archive search, offline reading, web
 push when an edition lands, and 👍/👎/Save feedback returned to the agent.
 
 ## What Night Desk is not
 
-- **Not an account system.** Readers are identities from the operator's OIDC
-  provider, declared per paper. Night Desk stores no passwords and manages no
-  user accounts.
+- **Not an identity provider.** Readers are identities declared per paper. Local
+  accounts exist so that a household needs no identity provider: argon2id
+  passwords, passkeys and invite links, and nothing more (no email, no
+  self-registration, no profile). An operator who already runs OIDC or an
+  authenticating proxy uses that instead.
 - **Not a crawler or a feed reader.** It gathers only from the sources configured
   for each paper (feeds, OPML imports and site-limited news searches), keeps
   snapshots for a bounded retention period, and does not talk to bookmark or
@@ -53,7 +55,7 @@ push when an edition lands, and 👍/👎/Save feedback returned to the agent.
 Everything is one Go binary, `nightdesk`, run in different roles.
 
 ```
-             OIDC provider
+   OIDC provider or auth proxy (optional)
                   │
  reader ──HTTPS── nightdesk serve ──────────── SQLite + image store
  (browser)        │  agent API, reader,          (one data directory)
@@ -150,6 +152,14 @@ retention at publish, OIDC discovery, weather, webhook delivery and web push.
 issuer and subject pair declared in the paper's configuration, so a changed or
 reused email address cannot move anyone into another paper. Sign-in uses the
 authorization code flow with PKCE, state and nonce through `coreos/go-oidc`.
+The other sign-in modes reuse the same pair with a fixed issuer: `local` (a local
+account's username, verified by argon2id or a WebAuthn passkey through
+`go-webauthn`), `proxy` (the user header of a request from a trusted proxy address,
+re-read on every request) and `none` (one fixed reader, allowed only on a private
+listen address unless acknowledged). Each mode accepts only sessions with its own
+issuer, so changing the mode signs everyone out. Local sign-in is throttled per
+account and address with a doubling delay, and argon2 runs at most two at a time
+so that a burst of attempts cannot exhaust memory.
 Sessions are random IDs in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie, stored
 server-side and revocable; signing out ends the session, clears the offline copy
 and removes that session's push subscriptions. A paper may also admit a provider
@@ -356,7 +366,7 @@ is one example of such a source, usable only under its own terms.
 | Pages | Server-rendered `html/template` and about 15 KB of plain JavaScript | Escaping by default, one rendering path and a fast first paint on a phone. |
 | Front-end tooling | None: no framework, no bundler, no build step | The interactions are few; a framework adds a build, bundle weight and update churn. |
 | Images | A content-addressed directory; downscaled to at most 1200 px wide and re-encoded as JPEG in pure Go | Strips metadata, neutralizes polyglot files, served immutable. |
-| Sign-in | `coreos/go-oidc` and `golang.org/x/oauth2` | Hand-written token verification is where mistakes happen. |
+| Sign-in | `coreos/go-oidc` and `golang.org/x/oauth2`; `golang.org/x/crypto/argon2` and `go-webauthn/webauthn` for local accounts | Hand-written token verification is where mistakes happen. |
 | Fonts | OFL faces embedded and subset to Latin | No third-party font requests; works offline. |
 | Container image | Distroless static, non-root, multi-arch | About 45 MB, almost all of it the stripped static binary. |
 
@@ -409,7 +419,8 @@ nothing about the paper leaves the server and no message encryption is needed; t
 VAPID key pair comes from the standard library.
 
 **Modules, each with a reason.** `coreos/go-oidc` and `golang.org/x/oauth2`
-(sign-in), `modernc.org/sqlite` (pure-Go SQLite), `golang.org/x/image` (WebP
+(OIDC sign-in), `golang.org/x/crypto` (argon2id) and `go-webauthn/webauthn`
+(passkeys) for local accounts, `modernc.org/sqlite` (pure-Go SQLite), `golang.org/x/image` (WebP
 decoding and scaling), `golang.org/x/net` (HTML tokenization), one YAML parser,
 `mmcdole/gofeed` (RSS, Atom and JSON feeds), `codeberg.org/readeck/go-readability/v2`
 (article extraction), the official MCP Go SDK (the stdio transport and protocol),

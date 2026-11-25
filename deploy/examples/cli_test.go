@@ -50,7 +50,7 @@ func TestStandaloneCommands(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "install")
-			args := []string{"init", "--dir", dir}
+			args := []string{"init", "--dir", dir, "--auth", "oidc", "--public-url", "https://paper.example.invalid"}
 			paper, masthead, timezone := "daily", "The Daily", "UTC"
 			if custom {
 				paper, masthead, timezone = "morning", `L'été: "Morning" #1`, "America/Chicago"
@@ -175,7 +175,7 @@ func TestStandaloneCommands(t *testing.T) {
 
 	t.Run("check reports exact problems without initializing storage", func(t *testing.T) {
 		dir := t.TempDir()
-		if code, _, errOut := invoke(t, "init", "--dir", dir); code != 0 {
+		if code, _, errOut := invoke(t, "init", "--dir", dir, "--auth", "oidc", "--public-url", "https://paper.example.invalid"); code != 0 {
 			t.Fatal(errOut)
 		}
 		raw, err := os.ReadFile(filepath.Join(dir, "config.yaml"))

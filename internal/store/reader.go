@@ -150,3 +150,75 @@ func (s *Store) ReaderFeedback(ctx context.Context, scope auth.ReaderScope, date
 	}
 	return result, rows.Err()
 }
+
+// PruneSessions deletes expired sessions. Their push subscriptions stay, as
+// before: a reader keeps notifications until they sign out or lose the paper.
+func (s *Store) PruneSessions(ctx context.Context, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE julianday(expires_at)<=julianday(?)`, now.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// CountSessions reports how many sessions are stored.
+func (s *Store) CountSessions(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sessions`).Scan(&n)
+	return n, err
+}
+
+// DeleteSessionsNotFrom deletes every session (and its push subscriptions)
+// whose issuer the current sign-in mode does not accept, so a session from an
+// earlier mode cannot come back if that mode is chosen again.
+func (s *Store) DeleteSessionsNotFrom(ctx context.Context, accepts func(issuer string) bool) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT issuer FROM sessions`)
+	if err != nil {
+		return 0, err
+	}
+	var drop []string
+	for rows.Next() {
+		var issuer string
+		if err = rows.Scan(&issuer); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if !accepts(issuer) {
+			drop = append(drop, issuer)
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, issuer := range drop {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return n, err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE session_hash IN (SELECT id_hash FROM sessions WHERE issuer=?)`, issuer); err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE issuer=?`, issuer)
+		if err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		if err = tx.Commit(); err != nil {
+			return n, err
+		}
+		c, _ := res.RowsAffected()
+		n += int(c)
+	}
+	return n, nil
+}
+
+// SetPushGroups records the groups a reader's push subscriptions carry, for
+// proxy mode when the proxy reports new groups without a new session.
+func (s *Store) SetPushGroups(ctx context.Context, issuer, subject string, groups []string) error {
+	encoded, err := encodeGroups(groups)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE push_subscriptions SET reader_groups=? WHERE reader_issuer=? AND reader_subject=?`, encoded, issuer, subject)
+	return err
+}

@@ -16,7 +16,7 @@ For each upgrade:
 1. Read the release notes; record the running image digest and configuration.
 2. Using the **old image**, run `nightdesk backup /backups/pre-upgrade --config
    /data/config.yaml` with a fresh destination mounted outside the data directory.
-   Save the corresponding config, OIDC secret and reader subject files separately.
+   Save the corresponding config, OIDC secret (if any) and reader subject files separately.
    Keep an independent off-device copy; hard-linked image backups share disk risk.
 3. Stop the server and workers, select the new image digest, run `nightdesk check
    --config /data/config.yaml`, then start it. Startup applies migrations. Verify
@@ -30,6 +30,31 @@ on again) into a fresh directory, restore matching config and secret files,
 and repoint the persistent mount. Never overlay an active WAL database or carry
 its old sidecars into the restore. Merely selecting an older image does not undo
 a migration. Changes made since the snapshot are absent after rollback.
+
+## Release notes that need action
+
+### 0.4: reader sign-in modes
+
+Nothing changes for an existing installation. A configuration with `server.oidc`
+and no `server.auth` keeps signing in through OIDC exactly as before, and its
+sessions stay valid. Migration `023_local_accounts` adds empty tables for local
+accounts, invites and passkeys. Expired sessions are now deleted hourly.
+
+To move an existing installation to another mode:
+
+- **To `local`.** Replace `server.oidc` with `auth: {mode: local}` (and optionally
+  `local: {passkeys: true}`), remove each reader's `issuer`, and either name the
+  usernames you will create (`readers: [{subject: alice}]`) or leave `readers: []`
+  so every account reads the paper. Restart, open `/setup` with the code from the
+  log, and invite the others. Readers' past feedback and notification subscriptions
+  belonged to their OIDC identities, so they do not carry over; each reader turns
+  notifications on again.
+- **To `proxy`.** Replace `server.oidc` with the `proxy` settings, and change each
+  reader to the user name (or group) your proxy sends, without `issuer`.
+- **To `none`.** Replace `server.oidc` with `auth: {mode: none}` and remove
+  `readers`. Keep the server on a private address.
+
+Changing the mode needs a restart and signs everyone out.
 
 See [installation](install.md) for container mounts, backup commands and restore
 checks. Preserve backups until the new release has been verified on your papers.

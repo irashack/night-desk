@@ -10,7 +10,7 @@ import (
 
 func TestCheckWorkerConfigCost(t *testing.T) {
 	dir := t.TempDir()
-	if code := run([]string{"init", "--dir", dir}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := run([]string{"init", "--dir", dir, "--auth", "oidc", "--public-url", "https://paper.example.invalid"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatal("init failed")
 	}
 	cfg := filepath.Join(dir, "config.yaml")
@@ -80,7 +80,7 @@ func readyConfig(template []byte) []byte {
 
 func TestCheckReportsPlaceholders(t *testing.T) {
 	dir := t.TempDir()
-	if code := run([]string{"init", "--dir", dir}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := run([]string{"init", "--dir", dir, "--auth", "oidc", "--public-url", "https://paper.example.invalid"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatal("init failed")
 	}
 	cfg := filepath.Join(dir, "config.yaml")

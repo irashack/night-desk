@@ -1,5 +1,5 @@
 # Set NIGHTDESK_IMAGE to a trusted image pinned by digest and NIGHTDESK_DIR to
-# the absolute path initialized with `nightdesk init`. Complete OIDC first.
+# the absolute path initialized with `nightdesk init`.
 # Set NIGHTDESK_UID/GID to the user that owns the bind mount (default image: 65532).
 services:
   nightdesk:

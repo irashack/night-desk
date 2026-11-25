@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/editorial"
@@ -47,6 +49,7 @@ type Server struct {
 	Weather   *weather.Client
 	Editorial *editorial.Desk // when set, readers may edit their paper's sections
 	Push      *push.Key       // when set, readers may opt in to web push
+	Log       *slog.Logger
 	oauth     oauth2.Config
 	verifier  *oidc.IDTokenVerifier
 	client    *http.Client
@@ -54,9 +57,74 @@ type Server struct {
 	mu        sync.Mutex
 	pending   map[[32]byte]transaction
 	now       func() time.Time
+	// Local accounts: the sign-in limiter, the first-run setup code (empty
+	// once an account exists), passkeys when enabled and their challenges.
+	// PasskeyProblem says why configured passkeys are off.
+	PasskeyProblem string
+	limiter        *auth.Limiter
+	setupCode      string
+	passkeys       *webauthn.WebAuthn
+	logins         map[[32]byte]ceremony
+	registrations  map[[32]byte]ceremony
+	ambient        map[string]string
+	lastGroups     map[string]string
 }
 
+// New builds the reader for the configured sign-in mode. Only oidc contacts
+// the provider (for discovery); the others need nothing outside the server.
 func New(ctx context.Context, db *store.Store, current func() *config.Config, clientSecret string) (*Server, error) {
+	t, err := template.New("reader").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }, "clock": clock, "period": period, "asset": asset, "modes": func() []string { return []string{"auto", "light", "sepia", "dark"} }, "percent": func(v float64) float64 { return v * 100 }}).ParseFS(web.Files, "templates/*.html")
+	if err != nil {
+		return nil, err
+	}
+	cfg := current()
+	s := &Server{Store: db, Config: current, Weather: weather.New(""), templates: t, pending: map[[32]byte]transaction{}, now: time.Now, limiter: auth.NewLimiter(), logins: map[[32]byte]ceremony{}, registrations: map[[32]byte]ceremony{}, ambient: map[string]string{}, lastGroups: map[string]string{}}
+	switch cfg.AuthMode() {
+	case config.AuthOIDC:
+		return s, s.discover(ctx, clientSecret)
+	case config.AuthLocal:
+		if s.passkeys, s.PasskeyProblem, err = newPasskeys(cfg); err != nil {
+			return nil, fmt.Errorf("passkeys: %w", err)
+		}
+		n, err := db.CountAccounts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			s.setupCode = setupCode()
+		}
+	}
+	return s, nil
+}
+
+// SetupCode is the first-run code that creates the first local account, or ""
+// when one exists.
+func (s *Server) SetupCode() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.setupCode
+}
+
+// setupCode is twelve characters from an alphabet without look-alikes,
+// grouped in threes: about 60 bits, entered once from the server's log.
+func setupCode() string {
+	// 32 characters (no 0, o, 1 or l), so a byte maps to one without bias.
+	const alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		panic("system randomness unavailable")
+	}
+	var out strings.Builder
+	for i, v := range b {
+		if i > 0 && i%3 == 0 {
+			out.WriteByte('-')
+		}
+		out.WriteByte(alphabet[int(v)%len(alphabet)])
+	}
+	return out.String()
+}
+
+func (s *Server) discover(ctx context.Context, clientSecret string) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	if supplied, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
 		copy := *supplied
@@ -65,20 +133,19 @@ func New(ctx context.Context, db *store.Store, current func() *config.Config, cl
 	}
 	discovery, cancel := context.WithTimeout(oidc.ClientContext(ctx, client), 10*time.Second)
 	defer cancel()
-	cfg := current()
+	cfg := s.Config()
 	provider, err := oidc.NewProvider(discovery, cfg.Server.OIDC.Issuer)
 	if err != nil {
-		return nil, fmt.Errorf("OIDC discovery failed: %w", err)
-	}
-	t, err := template.New("reader").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }, "clock": clock, "period": period, "asset": asset, "modes": func() []string { return []string{"auto", "light", "sepia", "dark"} }, "percent": func(v float64) float64 { return v * 100 }}).ParseFS(web.Files, "templates/*.html")
-	if err != nil {
-		return nil, err
+		return fmt.Errorf("OIDC discovery failed: %w", err)
 	}
 	scopes := cfg.Server.OIDC.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{oidc.ScopeOpenID}
 	}
-	return &Server{Store: db, Config: current, Weather: weather.New(""), oauth: oauth2.Config{ClientID: cfg.Server.OIDC.ClientID, ClientSecret: clientSecret, Endpoint: provider.Endpoint(), RedirectURL: strings.TrimRight(cfg.Server.PublicBaseURL, "/") + "/auth/callback", Scopes: scopes}, verifier: provider.Verifier(&oidc.Config{ClientID: cfg.Server.OIDC.ClientID}), client: client, templates: t, pending: map[[32]byte]transaction{}, now: time.Now}, nil
+	s.oauth = oauth2.Config{ClientID: cfg.Server.OIDC.ClientID, ClientSecret: clientSecret, Endpoint: provider.Endpoint(), RedirectURL: strings.TrimRight(cfg.Server.PublicBaseURL, "/") + "/auth/callback", Scopes: scopes}
+	s.verifier = provider.Verifier(&oidc.Config{ClientID: cfg.Server.OIDC.ClientID})
+	s.client = client
+	return nil
 }
 func random() string {
 	var b [32]byte
@@ -112,8 +179,36 @@ func Headers(next http.Handler) http.Handler {
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /login", s.login)
-	mux.HandleFunc("GET /auth/callback", s.callback)
+	switch s.Config().AuthMode() {
+	case config.AuthOIDC:
+		mux.HandleFunc("GET /login", s.login)
+		mux.HandleFunc("GET /auth/callback", s.callback)
+	case config.AuthLocal:
+		mux.HandleFunc("GET /login", s.localLogin)
+		mux.HandleFunc("POST /login", s.localLoginSubmit)
+		mux.HandleFunc("GET /setup", s.setupPage)
+		mux.HandleFunc("POST /setup", s.setupSubmit)
+		mux.HandleFunc("GET /invite/{token}", s.invitePage)
+		mux.HandleFunc("POST /invite/{token}", s.inviteSubmit)
+		mux.Handle("GET /account", s.protect(http.HandlerFunc(s.accountPage), true))
+		mux.Handle("POST /account/password", s.protect(http.HandlerFunc(s.changePassword), true))
+		mux.Handle("GET /admin", s.protect(http.HandlerFunc(s.adminPage), true))
+		mux.Handle("POST /admin/invite", s.protect(http.HandlerFunc(s.adminInvite), true))
+		mux.Handle("POST /admin/reset", s.protect(http.HandlerFunc(s.adminReset), true))
+		mux.Handle("POST /admin/remove", s.protect(http.HandlerFunc(s.adminRemove), true))
+		mux.Handle("POST /admin/role", s.protect(http.HandlerFunc(s.adminRole), true))
+		mux.Handle("POST /admin/revoke", s.protect(http.HandlerFunc(s.adminRevoke), true))
+		if s.passkeys != nil {
+			mux.HandleFunc("POST /login/passkey/begin", s.passkeyLoginBegin)
+			mux.HandleFunc("POST /login/passkey/finish", s.passkeyLoginFinish)
+			mux.Handle("POST /account/passkeys/begin", s.protect(http.HandlerFunc(s.passkeyRegisterBegin), true))
+			mux.Handle("POST /account/passkeys/finish", s.protect(http.HandlerFunc(s.passkeyRegisterFinish), true))
+			mux.Handle("POST /account/passkeys/remove", s.protect(http.HandlerFunc(s.passkeyRemove), true))
+		}
+	default:
+		// Proxy and none sign in on every request; there is no sign-in page.
+		mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
+	}
 	mux.HandleFunc("GET /static/", s.static)
 	mux.HandleFunc("GET /sw.js", s.static)
 	mux.Handle("POST /logout", s.protect(http.HandlerFunc(s.logout), true))
@@ -301,23 +396,33 @@ type principalKey struct{}
 func current(r *http.Request) principal { return r.Context().Value(principalKey{}).(principal) }
 func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("nd_session")
-		if err != nil {
-			unauthorized(w, r)
+		cfg := s.Config()
+		token := ""
+		if c, err := r.Cookie("nd_session"); err == nil {
+			token = c.Value
+		}
+		switch cfg.AuthMode() {
+		case config.AuthProxy, config.AuthNone:
+			var ok bool
+			if token, ok = s.ambientSession(w, r, cfg, token); !ok {
+				return
+			}
+		}
+		if token == "" {
+			s.unauthorized(w, r)
 			return
 		}
-		cfg := s.Config()
-		scope, err := auth.AuthenticateReader(r.Context(), s.Store, cfg, c.Value, s.now(), s.lifetime())
+		scope, err := auth.AuthenticateReader(r.Context(), s.Store, cfg, token, s.now(), s.lifetime())
 		if err == auth.ErrUnauthorized {
 			s.cookie(w, "nd_session", "", -1)
-			unauthorized(w, r)
+			s.unauthorized(w, r)
 			return
 		}
 		if err != nil && err != auth.ErrUnmapped {
 			http.Error(w, "Reader unavailable", 500)
 			return
 		}
-		s.cookie(w, "nd_session", c.Value, int(s.lifetime().Seconds()))
+		s.cookie(w, "nd_session", token, int(s.lifetime().Seconds()))
 		if err == auth.ErrUnmapped && !unmappedOK {
 			if r.URL.Path == "/" {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -370,6 +475,26 @@ func signInAgain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = w.Write([]byte(page))
+}
+
+// unauthorized answers a request without a session: the sign-in page of the
+// mode, with status 401.
+func (s *Server) unauthorized(w http.ResponseWriter, r *http.Request) {
+	switch s.Config().AuthMode() {
+	case config.AuthLocal:
+		// Logout clears the offline copy, as the OIDC sign-in page does: the
+		// session may have been ended elsewhere.
+		v := authView{Logout: true}
+		if r.Method == http.MethodGet {
+			v.Next = returnPath(r.URL.RequestURI())
+		}
+		s.loginPage(w, r, http.StatusUnauthorized, v)
+		return
+	case config.AuthProxy:
+		s.renderAuth(w, http.StatusUnauthorized, authView{Page: "message", Title: "Sign in through your proxy", Logout: true, Error: "This Night Desk signs readers in through a reverse proxy, and this request did not come through it signed in."})
+		return
+	}
+	unauthorized(w, r)
 }
 func unauthorized(w http.ResponseWriter, r *http.Request) {
 	// Do not redirect a navigation through the provider: a failed cross-origin

@@ -68,6 +68,12 @@ func backend(args []string, out, errOut io.Writer) int {
 		if len(args) != 2 {
 			return usage()
 		}
+	case "accounts":
+		ok := len(args) == 2 && (args[1] == "list" || args[1] == "invite") || len(args) == 3 && (args[1] == "invite" || args[1] == "reset" || args[1] == "remove")
+		if !ok {
+			fmt.Fprintln(errOut, "usage: nightdesk accounts list | invite [username] | reset <username> | remove <username> [--config <file>]")
+			return 2
+		}
 	case "key":
 		if len(args) < 2 {
 			return usage()
@@ -160,6 +166,8 @@ func backend(args []string, out, errOut io.Writer) int {
 			}
 		}
 		return 0
+	case "accounts":
+		return accountsCommand(ctx, c, db, args[1:], out, errOut)
 	case "quality":
 		return qualityCommand(ctx, manager, db, log, args[1:], out, errOut)
 	case "serve":
@@ -175,10 +183,13 @@ func serve(manager *config.Manager, db *store.Store, log *slog.Logger) int {
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
 	go manager.Watch(ctx, hup, log)
-	secret, e := os.ReadFile(c.Server.OIDC.ClientSecretFile)
-	if e != nil {
-		log.Error("OIDC client secret unavailable")
-		return 1
+	var secret []byte
+	if c.AuthMode() == config.AuthOIDC {
+		var e error
+		if secret, e = os.ReadFile(c.Server.OIDC.ClientSecretFile); e != nil {
+			log.Error("OIDC client secret unavailable")
+			return 1
+		}
 	}
 	// Agent edits overlay the declared papers for both the reader and the agent API.
 	desk, e := editorial.Open(ctx, db, manager.Current, log)
@@ -192,6 +203,25 @@ func serve(manager *config.Manager, db *store.Store, log *slog.Logger) int {
 		return 1
 	}
 	readerServer.Editorial = desk
+	readerServer.Log = log
+	// Sessions from another sign-in mode never count; delete them so they
+	// cannot come back if that mode is chosen again.
+	if n, e := db.DeleteSessionsNotFrom(ctx, c.AcceptsIssuer); e != nil {
+		log.Error("session cleanup failed")
+		return 1
+	} else if n > 0 {
+		log.Info("signed out sessions from another sign-in mode", "sessions", n)
+	}
+	log.Info("reader sign-in", "mode", c.AuthMode())
+	if c.AuthMode() == config.AuthNone {
+		log.Warn("server.auth.mode is none: anyone who can reach this server reads and edits its papers")
+	}
+	if readerServer.PasskeyProblem != "" {
+		log.Warn(readerServer.PasskeyProblem)
+	}
+	if code := readerServer.SetupCode(); code != "" {
+		log.Warn("no accounts yet: open "+strings.TrimRight(c.Server.PublicBaseURL, "/")+"/setup and enter the setup code to create the administrator", "setup_code", code)
+	}
 	// The VAPID key signs web push requests; it is created on first serve.
 	pushKey, e := push.LoadKey(c.Server.DataDir)
 	if e != nil {

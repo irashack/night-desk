@@ -85,6 +85,11 @@ type view struct {
 	Spot string
 	// Story is the reading view's story, set only on that page.
 	Story *storyView
+	// Account and Admin link a local account's pages; SignOut offers sign-out
+	// (not in proxy or none mode, which sign in on every request); Banner
+	// warns that the server has no sign-in.
+	Account, Admin, SignOut bool
+	Banner                  string
 }
 
 // paperLink is one entry of the masthead's paper switcher.
@@ -105,8 +110,18 @@ func (s *Server) base(r *http.Request) view {
 	owner := sha256.Sum256([]byte(p.scope.Session().CSRF + "\x00" + p.paper.ID))
 	v := view{Paper: p.paper, CSRF: p.scope.Session().CSRF, Owner: base64.RawURLEncoding.EncodeToString(owner[:]), Base: p.base,
 		Editing: s.Editorial != nil && p.scope.CanEdit()}
+	cfg := s.Config()
+	switch cfg.AuthMode() {
+	case config.AuthOIDC:
+		v.SignOut = true
+	case config.AuthLocal:
+		v.SignOut, v.Account = true, true
+		if a, err := s.Store.Account(r.Context(), p.scope.Session().Subject); err == nil {
+			v.Admin = a.Admin
+		}
+	}
+	v.Banner = banner(cfg)
 	if papers, refresh := p.scope.Papers(), p.scope.Refresh(); len(papers)+len(refresh) > 1 {
-		cfg := s.Config()
 		for i, a := range papers {
 			paper, ok := cfg.Paper(a.Paper)
 			if !ok {
