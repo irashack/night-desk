@@ -65,15 +65,16 @@ type hostState struct {
 type articles struct {
 	w         *Worker
 	client    *http.Client
+	allow     fetch.Allow
 	retryLeft time.Duration
 	health    map[string]*HostHealth
 }
 
-func (w *Worker) articles(client *http.Client) *articles {
+func (w *Worker) articles(client *http.Client, allow fetch.Allow) *articles {
 	if w.hosts == nil {
 		w.hosts = map[string]*hostState{}
 	}
-	return &articles{w: w, client: client, retryLeft: runRetryBudget, health: map[string]*HostHealth{}}
+	return &articles{w: w, client: client, allow: allow, retryLeft: runRetryBudget, health: map[string]*HostHealth{}}
 }
 
 func hostOf(link string) string {
@@ -160,7 +161,8 @@ func (a *articles) extract(ctx context.Context, final string, page []byte) (titl
 		h.JSONLD++
 		return title, body
 	}
-	if amp := ampURL(final, page); amp != "" {
+	// An AMP link on a public page never reaches an approved private service.
+	if amp := ampURL(final, page); amp != "" && a.allow.Reached(final, amp) {
 		if ampPage, ampFinal, err := a.read(ctx, amp); err == nil {
 			if ampTitle, ampText, err := a.w.Extractor.Extract(ampFinal, ampPage); err == nil && usable(ampText) {
 				h.AMP++

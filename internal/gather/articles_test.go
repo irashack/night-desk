@@ -56,9 +56,9 @@ func testWorker(t *testing.T, h http.Handler) (*Worker, *httptest.Server, *[]tim
 	return w, site, &delays, &now
 }
 
-func client(site *httptest.Server) *http.Client {
+func client(site *httptest.Server) (*http.Client, fetch.Allow) {
 	u, _ := url.Parse(site.URL)
-	return fetch.New(fetch.Allow{u.Host})
+	return fetch.New(fetch.Allow{u.Host}), fetch.Allow{u.Host}
 }
 
 func TestExtractionFallbacks(t *testing.T) {

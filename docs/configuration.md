@@ -119,7 +119,9 @@ worker with models asks its fast model (prompt `find-sources`) at most daily for
 publications' feeds, keeping up to five that it fetched and parsed itself; three
 verified feeds retire the search. Sections added from the reader set it.
 `retention_days` defaults to 14 (1–90); the server removes older snapshots hourly, whether or not a worker is running. `gather.allow_private` lists exact
-`host:port` exceptions for local feed services. `papers[].filters` drops junk
+`host:port` exceptions for local feed services (and webhook receivers). Only that
+service's own feed, pages and redirects lead the worker to it; links and redirects
+from public feeds and pages are refused. `papers[].filters` drops junk
 before its page is fetched: built-in rules for betting picks, fantasy advice,
 roundups and editorial cartoons (each may be listed in `disabled`), plus
 `blocked_outlets` (feed name, or URL host and its subdomains) and
