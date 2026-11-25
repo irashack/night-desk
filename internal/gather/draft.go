@@ -274,6 +274,8 @@ const (
 	maxDraftCandidates      = 48
 	maxDraftPerSection      = 8
 	maxDraftTextBytes       = 16 << 10
+	maxDraftItemBytes       = 2048
+	minDraftItemBytes       = 256
 	maxDraftPagesPerSection = 10
 )
 
@@ -287,6 +289,10 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper) ([]draftin
 	}
 	sectionBytes := maxDraftTextBytes / len(p.Sections)
 	sectionCount := min(maxDraftPerSection, maxDraftCandidates/len(p.Sections))
+	// Each candidate gets an equal share of its section's text budget, so a
+	// paper with many sections still offers the writer several stories in each
+	// rather than one long one; the total budget is unchanged.
+	itemBytes := min(maxDraftItemBytes, max(sectionBytes/max(sectionCount, 1), minDraftItemBytes))
 	totalBytes := 0
 	for _, section := range p.Sections {
 		count, used := 0, 0
@@ -308,7 +314,7 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper) ([]draftin
 				if c.State != "ok" || c.Repeat || c.Section != section.Key || !strings.HasPrefix(c.CanonicalURL, "https://") {
 					continue
 				}
-				text := capText(c.Text, min(2048, sectionBytes-used, maxDraftTextBytes-totalBytes))
+				text := capText(c.Text, min(itemBytes, sectionBytes-used, maxDraftTextBytes-totalBytes))
 				if text == "" {
 					continue
 				}

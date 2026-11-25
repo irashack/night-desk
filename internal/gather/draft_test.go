@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -276,16 +277,58 @@ func TestDraftCandidatesBoundedPagesAndSections(t *testing.T) {
 	for _, c := range selected {
 		counts[c.Section]++
 		textBytes += len(c.Text)
-		if c.ID != "10" || !strings.HasSuffix(c.URL, "/10") {
+		// Newest first: IDs 10, 9, 8 in each section.
+		if want := strconv.Itoa(11 - counts[c.Section]); c.ID != want || !strings.HasSuffix(c.URL, "/"+want) {
 			t.Fatal("did not prefer newest", c.ID, c.URL)
 		}
 	}
 	if len(selected) > maxDraftCandidates || textBytes > maxDraftTextBytes {
 		t.Fatal(len(selected), textBytes)
 	}
+	// 16 sections share 48 candidates and 16 KiB: three stories of about 340
+	// bytes each, not one story of 1 KiB.
 	for _, s := range p.Sections {
-		if counts[s.Key] != 1 || reads[s.Key] != 2 {
+		if counts[s.Key] != 3 || reads[s.Key] != 2 {
 			t.Fatal(s.Key, counts[s.Key], reads[s.Key])
+		}
+	}
+}
+
+func TestDraftCandidatesShareSectionBudget(t *testing.T) {
+	for _, tc := range []struct{ sections, perSection, itemBytes int }{
+		{1, 8, 2048}, // one section: as before, eight stories of up to 2 KiB
+		{4, 8, 512},
+		{8, 6, 341},
+	} {
+		p := config.Paper{}
+		for i := 0; i < tc.sections; i++ {
+			p.Sections = append(p.Sections, config.Section{Key: fmt.Sprintf("s%d", i)})
+		}
+		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			section := r.URL.Query().Get("section")
+			list := []candidate.Candidate{}
+			for i := 10; i > 0; i-- {
+				list = append(list, candidate.Candidate{ID: int64(i), Section: section, State: "ok", CanonicalURL: fmt.Sprintf("https://example.com/%s/%d", section, i), Outlet: "Example", Text: strings.Repeat("word ", 1000)})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"candidates": list})
+		}))
+		worker, _ := New(api.URL, "key", nil)
+		selected, err := worker.draftCandidates(context.Background(), p)
+		api.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		counts := map[string]int{}
+		for _, c := range selected {
+			counts[c.Section]++
+			if len(c.Text) > tc.itemBytes {
+				t.Fatalf("%d sections: %d bytes, want at most %d", tc.sections, len(c.Text), tc.itemBytes)
+			}
+		}
+		for _, s := range p.Sections {
+			if counts[s.Key] != tc.perSection {
+				t.Fatalf("%d sections: %s has %d stories, want %d", tc.sections, s.Key, counts[s.Key], tc.perSection)
+			}
 		}
 	}
 }
