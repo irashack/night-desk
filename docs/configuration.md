@@ -223,8 +223,9 @@ or `publish-unreviewed`; `draft_lead` is the worker's drafting window before the
 deadline (default `90m`, at most 24h). At the deadline the server scheduler applies
 the policy to that day's draft: `publish-unreviewed` marks a reviewer paper's
 edition unreviewed, while a `none` paper publishes normally. The worker drafts
-reviewer/none papers only inside `draft_lead`; author papers are written by their
-agent. `GET /api/v1/paper` serves these fields, masthead and optional place,
+reviewer/none papers during `draft_lead` and can catch up on a missed deadline
+before local midnight. With no models configured, it drafts from gathered
+headlines, excerpts and links. Author papers are written by their agent. `GET /api/v1/paper` serves these fields, masthead and optional place,
 sections and their briefs, sources, retention, reader notes and enabled boxes;
 absent optional fields are omitted. See the generic writing pipeline in
 [integrations/hermes](../integrations/hermes/README.md).
