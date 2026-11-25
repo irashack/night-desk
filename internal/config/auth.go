@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -187,6 +188,10 @@ func (c *Config) checkAuth(add func(string, string)) {
 			if problem := publicListen(c.Server.Listen); problem != "" {
 				add("server.listen", problem+"; with server.auth.mode none, listen on a loopback or private address, or set server.auth.none.acknowledge_public_access")
 			}
+			// A private listener behind a public reverse proxy is public too.
+			if u, err := url.Parse(c.Server.PublicBaseURL); err == nil && !privateHost(u.Hostname()) {
+				add("server.public_base_url", u.Hostname()+" may be a public address; with server.auth.mode none, use a loopback or private address or a local name (.local, .lan, .home.arpa, .internal), or set server.auth.none.acknowledge_public_access")
+			}
 		}
 	}
 }
@@ -218,6 +223,25 @@ func privateAddr(a netip.Addr) bool {
 		netip.MustParsePrefix("100.64.0.0/10").Contains(a)
 }
 
+// privateHost reports whether a public_base_url host names this machine or a
+// private network: localhost, a loopback or private address, or a name under a
+// suffix reserved for local networks. Any other name may resolve publicly.
+func privateHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if a, err := netip.ParseAddr(host); err == nil {
+		return privateAddr(a)
+	}
+	if host == "localhost" {
+		return true
+	}
+	for _, suffix := range []string{".localhost", ".local", ".lan", ".home.arpa", ".internal", ".localdomain"} {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // interfaceAddrs lists this machine's addresses; tests replace it.
 var interfaceAddrs = func() ([]netip.Addr, error) {
 	addrs, err := net.InterfaceAddrs()
@@ -226,10 +250,17 @@ var interfaceAddrs = func() ([]netip.Addr, error) {
 	}
 	var out []netip.Addr
 	for _, a := range addrs {
-		if n, ok := a.(*net.IPNet); ok {
-			if ip, ok := netip.AddrFromSlice(n.IP); ok {
-				out = append(out, ip.Unmap())
-			}
+		var raw net.IP
+		switch v := a.(type) {
+		case *net.IPNet:
+			raw = v.IP
+		case *net.IPAddr:
+			raw = v.IP
+		default:
+			return nil, fmt.Errorf("unknown address type %T", a)
+		}
+		if ip, ok := netip.AddrFromSlice(raw); ok {
+			out = append(out, ip.Unmap())
 		}
 	}
 	return out, nil

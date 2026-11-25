@@ -27,6 +27,11 @@ type SessionLookup interface {
 	SlideSession(context.Context, [32]byte, time.Time, time.Time) error
 }
 
+// AccountLookup is implemented by a SessionLookup that keeps local accounts.
+type AccountLookup interface {
+	LocalAccount(ctx context.Context, username string) (exists, admin bool, err error)
+}
+
 // Access is one paper a session may read, and whether it reads it by subject
 // (its own paper) or through a group.
 type Access struct {
@@ -109,9 +114,14 @@ var ErrUnmapped = errors.New("no paper for reader")
 // every paper with a group reader for one of groups.
 //
 // Without sign-in (server.auth.mode none) the one reader reads every paper.
-// A local account also reads every paper whose readers list is empty: its
-// first such paper is its own unless a paper names it.
+// A local account also reads every paper whose readers list is empty; for an
+// administrator the first such paper is its own (editable) unless a paper
+// names it, while other accounts only read open papers.
 func Readable(cfg *config.Config, issuer, subject string, groups []string) []Access {
+	return readable(cfg, issuer, subject, groups, false)
+}
+
+func readable(cfg *config.Config, issuer, subject string, groups []string, admin bool) []Access {
 	var out []Access
 	mode := cfg.AuthMode()
 	if !cfg.AcceptsIssuer(issuer) {
@@ -128,7 +138,7 @@ func Readable(cfg *config.Config, issuer, subject string, groups []string) []Acc
 	}
 	out = configured(cfg, issuer, subject, groups)
 	if mode == config.AuthLocal {
-		own := len(out) > 0 && out[0].BySubject
+		own := len(out) > 0 && out[0].BySubject || !admin
 		for _, paper := range cfg.Papers {
 			if len(paper.Readers) == 0 && !slices.ContainsFunc(out, func(a Access) bool { return a.Paper == paper.ID }) {
 				out = append(out, Access{Paper: paper.ID, BySubject: !own})
@@ -181,19 +191,33 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 		// Signed in under another server.auth.mode.
 		return ReaderScope{}, ErrUnauthorized
 	}
+	admin := false
+	if session.Issuer == config.LocalIssuer {
+		accounts, ok := lookup.(AccountLookup)
+		if !ok {
+			return ReaderScope{}, ErrUnauthorized
+		}
+		var exists bool
+		if exists, admin, err = accounts.LocalAccount(ctx, session.Subject); err != nil {
+			return ReaderScope{}, err
+		}
+		if !exists {
+			return ReaderScope{}, ErrUnauthorized
+		}
+	}
 	// Group membership holds as of sign-in, and only for the group lifetime.
 	// A sign-in that never asked for groups knows no membership at all.
 	stale := cfg.HasGroupReaders() && (!session.GroupsChecked || !session.Created.Add(cfg.GroupLifetime()).After(now))
 	var papers []Access
 	var refresh, unknown []string
 	if stale {
-		papers = Readable(cfg, session.Issuer, session.Subject, nil)
+		papers = readable(cfg, session.Issuer, session.Subject, nil, admin)
 		if len(papers) == 0 {
 			// Without a paper of its own the session signs in again, to read
 			// group papers it may have joined or still belongs to.
 			return ReaderScope{}, ErrUnauthorized
 		}
-		for _, a := range Readable(cfg, session.Issuer, session.Subject, session.Groups) {
+		for _, a := range readable(cfg, session.Issuer, session.Subject, session.Groups, admin) {
 			if !a.BySubject {
 				refresh = append(refresh, a.Paper)
 			}
@@ -204,7 +228,7 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 			}
 		}
 	} else {
-		papers = Readable(cfg, session.Issuer, session.Subject, session.Groups)
+		papers = readable(cfg, session.Issuer, session.Subject, session.Groups, admin)
 	}
 	if err = lookup.SlideSession(ctx, session.Hash, now, now.Add(lifetime)); err != nil {
 		return ReaderScope{}, err

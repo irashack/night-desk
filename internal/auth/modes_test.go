@@ -24,12 +24,17 @@ func TestReadableLocal(t *testing.T) {
 		nil,
 		nil,
 	)}
-	// An open paper is ada's own; the second open paper she reads too.
-	if got := Readable(cfg, config.LocalIssuer, "ada", nil); !reflect.DeepEqual(got, []Access{{"b", true}, {"c", false}}) {
+	// A reader reads the open papers; only an administrator's first open
+	// paper is their own, with its sections to edit.
+	if got := Readable(cfg, config.LocalIssuer, "ada", nil); !reflect.DeepEqual(got, []Access{{"b", false}, {"c", false}}) {
 		t.Fatal(got)
 	}
-	// bob's named paper comes first; open papers follow, not his own.
-	if got := Readable(cfg, config.LocalIssuer, "bob", nil); !reflect.DeepEqual(got, []Access{{"a", true}, {"b", false}, {"c", false}}) {
+	if got := readable(cfg, config.LocalIssuer, "ada", nil, true); !reflect.DeepEqual(got, []Access{{"b", true}, {"c", false}}) {
+		t.Fatal(got)
+	}
+	// bob's named paper comes first; open papers follow, not his own, even
+	// for an administrator.
+	if got := readable(cfg, config.LocalIssuer, "bob", nil, true); !reflect.DeepEqual(got, []Access{{"a", true}, {"b", false}, {"c", false}}) {
 		t.Fatal(got)
 	}
 	// Other issuers read nothing in local mode.
@@ -85,6 +90,11 @@ func TestPasswordHash(t *testing.T) {
 		if verify(bad, "night-desk-no-such-account") {
 			t.Fatal(bad)
 		}
+	}
+	// An over-long password is refused alike with or without an account.
+	long := strings.Repeat("x", MaxPasswordLength+1)
+	if verify(h, long) || verify("", long) {
+		t.Fatal("over-long password")
 	}
 	if CheckNewPassword("123456789") == nil || CheckNewPassword("ünïcödé-ok") != nil || CheckNewPassword(strings.Repeat("x", MaxPasswordLength+1)) == nil {
 		t.Fatal("password rules")
@@ -143,7 +153,8 @@ func TestPasswordWorkIsBounded(t *testing.T) {
 	for i := 0; i < cap(waiting); i++ {
 		waiting <- struct{}{}
 	}
-	h := "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g"
+	// A missing account ("") reaches argon2 too, through the dummy hash.
+	h := ""
 	if _, err := VerifyPassword(context.Background(), h, "x"); err != ErrBusy {
 		t.Fatal(err)
 	}

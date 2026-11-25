@@ -45,8 +45,14 @@ func proxyIdentity(cfg *config.Config, r *http.Request) (user string, groups []s
 		return "", nil, false
 	}
 	if p.GroupsHeader != "" {
-		for _, v := range r.Header.Values(p.GroupsHeader) {
-			for _, g := range strings.Split(v, ",") {
+		values := r.Header.Values(p.GroupsHeader)
+		if len(values) > 1 {
+			// Repeated, like a repeated user header: refuse rather than merge
+			// what a client may have added.
+			return "", nil, false
+		}
+		if len(values) == 1 {
+			for _, g := range strings.Split(values[0], ",") {
 				g = strings.TrimSpace(g)
 				if g == "" || len(g) > 256 || !utf8.ValidString(g) || strings.ContainsFunc(g, unicode.IsControl) {
 					continue
@@ -54,11 +60,13 @@ func proxyIdentity(cfg *config.Config, r *http.Request) (user string, groups []s
 				if !slices.Contains(groups, g) {
 					groups = append(groups, g)
 				}
-				if len(groups) >= 512 {
-					break
-				}
 			}
 		}
+		if len(groups) > 512 {
+			return "", nil, false
+		}
+		// The order a proxy lists groups in means nothing.
+		slices.Sort(groups)
 	}
 	return user, groups, true
 }
@@ -100,7 +108,10 @@ func (s *Server) ambientSession(w http.ResponseWriter, r *http.Request, cfg *con
 	// A client that keeps no cookie (a script, a health check) reuses the
 	// reader's session instead of adding one per request. The token stays in
 	// memory only, since the database keeps just its hash.
-	key := issuer + "\x00" + subject + "\x00" + strings.Join(groups, "\x00")
+	// One per reader: a session with other groups is not usable, so a group
+	// change always goes through a new sign-in, which refreshes the groups
+	// their push subscriptions carry.
+	key := issuer + "\x00" + subject
 	s.mu.Lock()
 	known := s.ambient[key]
 	s.mu.Unlock()

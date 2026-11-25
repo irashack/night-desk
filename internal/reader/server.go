@@ -107,7 +107,8 @@ func (s *Server) SetupCode() string {
 // setupCode is twelve characters from an alphabet without look-alikes,
 // grouped in threes: about 60 bits, entered once from the server's log.
 func setupCode() string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+	// 32 characters (no 0, o, 1 or l), so a byte maps to one without bias.
+	const alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
 		panic("system randomness unavailable")
@@ -480,14 +481,16 @@ func signInAgain(w http.ResponseWriter, r *http.Request) {
 func (s *Server) unauthorized(w http.ResponseWriter, r *http.Request) {
 	switch s.Config().AuthMode() {
 	case config.AuthLocal:
-		v := authView{}
+		// Logout clears the offline copy, as the OIDC sign-in page does: the
+		// session may have been ended elsewhere.
+		v := authView{Logout: true}
 		if r.Method == http.MethodGet {
 			v.Next = returnPath(r.URL.RequestURI())
 		}
 		s.loginPage(w, r, http.StatusUnauthorized, v)
 		return
 	case config.AuthProxy:
-		s.renderAuth(w, http.StatusUnauthorized, authView{Page: "message", Title: "Sign in through your proxy", Error: "This Night Desk signs readers in through a reverse proxy, and this request did not come through it signed in."})
+		s.renderAuth(w, http.StatusUnauthorized, authView{Page: "message", Title: "Sign in through your proxy", Logout: true, Error: "This Night Desk signs readers in through a reverse proxy, and this request did not come through it signed in."})
 		return
 	}
 	unauthorized(w, r)

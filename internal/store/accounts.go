@@ -148,8 +148,14 @@ func (s *Store) CreateInvite(ctx context.Context, v Invite) error {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO local_invites(token_hash,kind,username,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?)`, v.TokenHash[:], kind, username, v.CreatedBy, stamp(v.Created), stamp(v.Expires)); err != nil {
+	// A reset link is only for an account that exists as it is stored, so
+	// one cannot outlive a removal and reset a later account of that name.
+	res, err := tx.ExecContext(ctx, `INSERT INTO local_invites(token_hash,kind,username,created_by,created_at,expires_at) SELECT ?,?,?,?,?,? WHERE ?='invite' OR EXISTS(SELECT 1 FROM local_accounts WHERE username=?)`, v.TokenHash[:], kind, username, v.CreatedBy, stamp(v.Created), stamp(v.Expires), kind, v.Username)
+	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
 	}
 	return tx.Commit()
 }
@@ -241,20 +247,22 @@ func (s *Store) RedeemInvite(ctx context.Context, hash [32]byte, username, passw
 	return username, tx.Commit()
 }
 
-// SetPassword changes an account's password and signs out every other
-// session of it (keep, when set, stays signed in).
-func (s *Store) SetPassword(ctx context.Context, username, hash string, now time.Time, keep *[32]byte) error {
+// SetPassword changes an account's password from the hash the current
+// password was checked against (any, when oldHash is empty) and signs out
+// every other session of it (keep, when set, stays signed in). A password
+// changed meanwhile (a reset) is not overwritten: ErrAccountChanged.
+func (s *Store) SetPassword(ctx context.Context, username, oldHash, hash string, now time.Time, keep *[32]byte) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE local_accounts SET password_hash=?,password_changed_at=? WHERE username=?`, hash, stamp(now), username)
+	res, err := tx.ExecContext(ctx, `UPDATE local_accounts SET password_hash=?,password_changed_at=? WHERE username=? AND (?='' OR password_hash=?)`, hash, stamp(now), username, oldHash, oldHash)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return sql.ErrNoRows
+		return ErrAccountChanged
 	}
 	if err = signOutAccountTx(ctx, tx, username, keep); err != nil {
 		return err
@@ -328,7 +336,7 @@ func (s *Store) RemoveAccount(ctx context.Context, username string) error {
 // signOutAccountTx deletes the account's sessions (but keep) and the push
 // subscriptions those sessions made.
 func signOutAccountTx(ctx context.Context, tx *sql.Tx, username string, keep *[32]byte) error {
-	var except []byte
+	var except any
 	if keep != nil {
 		except = keep[:]
 	}
@@ -339,10 +347,47 @@ func signOutAccountTx(ctx context.Context, tx *sql.Tx, username string, keep *[3
 	return err
 }
 
-// AddPasskey stores a new credential.
-func (s *Store) AddPasskey(ctx context.Context, p Passkey) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO passkeys(credential_id,username,name,credential,sign_count,created_at) VALUES (?,?,?,?,?,?)`, p.ID, p.Username, p.Name, string(p.Credential), p.SignCount, stamp(p.Created))
-	return err
+// ErrTooManyPasskeys refuses a passkey beyond MaxPasskeys.
+var ErrTooManyPasskeys = errors.New("too many passkeys")
+
+// MaxPasskeys bounds an account's passkeys.
+const MaxPasskeys = 20
+
+// AddPasskey stores a new credential for the account of the still-live
+// session that registered it (a reset or removal meanwhile ends that session),
+// unless the account already has MaxPasskeys.
+func (s *Store) AddPasskey(ctx context.Context, p Passkey, session [32]byte) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var live bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sessions WHERE id_hash=? AND issuer=? AND subject=?)`, session[:], config.LocalIssuer, p.Username).Scan(&live); err != nil {
+		return err
+	}
+	if !live {
+		return ErrAccountChanged
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO passkeys(credential_id,username,name,credential,sign_count,created_at) SELECT ?,?,?,?,?,? WHERE (SELECT count(*) FROM passkeys WHERE username=?)<?`, p.ID, p.Username, p.Name, string(p.Credential), p.SignCount, stamp(p.Created), p.Username, MaxPasskeys)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrTooManyPasskeys
+	}
+	return tx.Commit()
+}
+
+// LocalAccount reports whether a local account exists and whether it
+// administers the others; reader authentication asks on every request, so a
+// removed account's session never reads again.
+func (s *Store) LocalAccount(ctx context.Context, username string) (exists, admin bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT admin FROM local_accounts WHERE username=?`, username).Scan(&admin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, false, nil
+	}
+	return err == nil, admin, err
 }
 
 func scanPasskeys(rows *sql.Rows) ([]Passkey, error) {
@@ -383,19 +428,19 @@ type PasskeyUse struct {
 }
 
 // InsertLocalSession signs a local account in: in one transaction it checks
-// that the account still exists and its password has not changed since
-// verifiedAt (when the password or passkey check began), records a passkey's
-// use, and inserts the session. A passkey removed meanwhile, or whose counter
-// did not move forward (an authenticator that counts never repeats a value),
-// refuses the sign-in too.
-func (s *Store) InsertLocalSession(ctx context.Context, v auth.Session, verifiedAt time.Time, use *PasskeyUse) error {
+// that the account still exists and, for a password sign-in, that its password
+// hash is still verifiedHash (the one the password was checked against: a
+// change or reset replaces it), records a passkey's use, and inserts the
+// session. A passkey removed meanwhile, or whose counter did not move forward
+// (an authenticator that counts never repeats a value), refuses it too.
+func (s *Store) InsertLocalSession(ctx context.Context, v auth.Session, verifiedHash string, use *PasskeyUse) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var ok bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM local_accounts WHERE username=? AND julianday(password_changed_at)<=julianday(?))`, v.Subject, stamp(verifiedAt)).Scan(&ok); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM local_accounts WHERE username=? AND (?='' OR password_hash=?))`, v.Subject, verifiedHash, verifiedHash).Scan(&ok); err != nil {
 		return err
 	}
 	if !ok {

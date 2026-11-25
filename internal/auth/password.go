@@ -99,30 +99,32 @@ func HashPassword(password string) (string, error) {
 }
 
 // dummyHash is verified against when an account does not exist, so a missing
-// account takes as long to refuse as a wrong password.
-var dummyHash = sync.OnceValue(func() string {
-	h, _ := HashPassword("night-desk-no-such-account")
-	return h
-})
+// account takes as long to refuse as a wrong password. It is a constant (no
+// password matches it) so that it can never be missing.
+func dummyHash() string {
+	return "$argon2id$v=19$m=19456,t=2,p=1$bmlnaHQtZGVzay1kdW1teQ$FkZ0dXBnaHlhY2N0dW5vcm1hbHdheWZvcnRpbWluZ3M"
+}
 
 // VerifyPassword reports whether password matches hash. An empty hash (no such
 // account) still costs one derivation and returns false. It returns ErrBusy,
 // or the context's error, when the check could not run.
 func VerifyPassword(ctx context.Context, hash, password string) (bool, error) {
+	// Refuse an over-long password before anything that depends on the
+	// account, so its length reveals nothing about whether the account exists.
+	if len(password) > MaxPasswordLength {
+		return false, nil
+	}
 	if hash == "" {
 		hash = dummyHash()
 		password += "\x00"
 	}
-	if len(password) > MaxPasswordLength+1 {
-		return false, nil
-	}
 	parts := strings.Split(hash, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != fmt.Sprintf("v=%d", argon2.Version) {
+	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != fmt.Sprintf("v=%d", argon2.Version) {
 		return false, nil
 	}
 	var memory, passes uint32
 	var threads uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &passes, &threads); err != nil {
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &passes, &threads); err != nil || parts[3] != fmt.Sprintf("m=%d,t=%d,p=%d", memory, passes, threads) {
 		return false, nil
 	}
 	// Refuse parameters that would let a stored hash exhaust the machine.
@@ -130,7 +132,7 @@ func VerifyPassword(ctx context.Context, hash, password string) (bool, error) {
 		return false, nil
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil || len(salt) < 8 {
+	if err != nil || len(salt) < 8 || len(salt) > 64 {
 		return false, nil
 	}
 	want, err := base64.RawStdEncoding.DecodeString(parts[5])

@@ -144,3 +144,18 @@ func TestNoneListenAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNonePublicBaseURL(t *testing.T) {
+	for host, private := range map[string]bool{"localhost": true, "paper.local": true, "nd.home.arpa": true, "desk.lan": true, "192.168.1.4": true, "paper.example.com": false, "203.0.113.5": false, "paper.ts.net": false} {
+		if privateHost(host) != private {
+			t.Errorf("%s: want private=%v", host, private)
+		}
+	}
+	text := strings.Replace(authConfig("  auth: {mode: none}\n", "  readers: []\n"), "https://paper.example", "https://paper.example.com", 1)
+	if _, err := loadText(t, text); err == nil || !strings.Contains(err.Error(), "server.public_base_url: paper.example.com may be a public address") {
+		t.Fatal(err)
+	}
+	if _, err := loadText(t, strings.Replace(text, "https://paper.example.com", "https://paper.home.arpa", 1)); err != nil {
+		t.Fatal(err)
+	}
+}

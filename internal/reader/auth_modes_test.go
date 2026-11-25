@@ -592,43 +592,66 @@ func TestLocalSignInRacesAccountChanges(t *testing.T) {
 	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
 	f.browser(t).setup("ada", "correct horse")
 	ctx := context.Background()
-	before := time.Now()
-	time.Sleep(2 * time.Millisecond)
+	a, _ := f.db.Account(ctx, "ada")
+	old := a.PasswordHash
 	hash, _ := auth.HashPassword("another horse")
-	if err := f.db.SetPassword(ctx, "ada", hash, time.Now(), nil); err != nil {
+	if err := f.db.SetPassword(ctx, "ada", old, hash, time.Now(), nil); err != nil {
 		t.Fatal(err)
 	}
-	// A sign-in whose check began before the change cannot create a session.
+	// A change from a hash that is no longer current does not overwrite.
+	if err := f.db.SetPassword(ctx, "ada", old, old, time.Now(), nil); err != store.ErrAccountChanged {
+		t.Fatal(err)
+	}
+	// A sign-in checked against the old password cannot create a session.
 	now := time.Now()
 	session := auth.Session{Hash: sha256.Sum256([]byte(random())), Issuer: config.LocalIssuer, Subject: "ada", CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)}
-	if err := f.db.InsertLocalSession(ctx, session, before, nil); err != store.ErrAccountChanged {
+	if err := f.db.InsertLocalSession(ctx, session, old, nil); err != store.ErrAccountChanged {
 		t.Fatal(err)
 	}
-	if err := f.db.InsertLocalSession(ctx, session, time.Now(), nil); err != nil {
+	if err := f.db.InsertLocalSession(ctx, session, hash, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Nor for an account that no longer exists, or a passkey that does not.
 	session.Hash = sha256.Sum256([]byte(random()))
-	if err := f.db.InsertLocalSession(ctx, session, time.Now(), &store.PasskeyUse{ID: []byte("gone"), SignCount: 1}); err != store.ErrAccountChanged {
+	if err := f.db.InsertLocalSession(ctx, session, "", &store.PasskeyUse{ID: []byte("gone"), SignCount: 1}); err != store.ErrAccountChanged {
 		t.Fatal(err)
 	}
 	session.Subject = "nobody"
-	if err := f.db.InsertLocalSession(ctx, session, time.Now(), nil); err != store.ErrAccountChanged {
+	if err := f.db.InsertLocalSession(ctx, session, "", nil); err != store.ErrAccountChanged {
 		t.Fatal(err)
 	}
+	// A passkey is added only through a live session of its account.
+	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("k"), Username: "ada", Name: "k", Credential: []byte("{}"), Created: now}, sha256.Sum256([]byte("no such session"))); err != store.ErrAccountChanged {
+		t.Fatal(err)
+	}
+	// And a reset link only for an account that exists.
+	if err := f.db.CreateInvite(ctx, store.Invite{TokenHash: sha256.Sum256([]byte(random())), Reset: true, Username: "nobody", CreatedBy: "ada", Created: now, Expires: now.Add(time.Hour)}); err == nil {
+		t.Fatal("reset link for a missing account")
+	}
+}
+
+// liveSession stores a session for username and returns its hash.
+func liveSession(t *testing.T, db *store.Store, username string) [32]byte {
+	t.Helper()
+	now := time.Now()
+	h := sha256.Sum256([]byte(random()))
+	if err := db.InsertSession(context.Background(), auth.Session{Hash: h, Issuer: config.LocalIssuer, Subject: username, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	return h
 }
 
 func TestPasskeyCounterMustAdvance(t *testing.T) {
 	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
 	f.browser(t).setup("ada", "correct horse")
 	ctx := context.Background()
-	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("key"), Username: "ada", Name: "k", Credential: []byte("{}"), SignCount: 5, Created: time.Now()}); err != nil {
+	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("key"), Username: "ada", Name: "k", Credential: []byte("{}"), SignCount: 5, Created: time.Now()}, liveSession(t, f.db, "ada")); err != nil {
 		t.Fatal(err)
 	}
 	use := func(count uint32) error {
 		now := time.Now()
 		session := auth.Session{Hash: sha256.Sum256([]byte(random())), Issuer: config.LocalIssuer, Subject: "ada", CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)}
-		return f.db.InsertLocalSession(ctx, session, now, &store.PasskeyUse{ID: []byte("key"), Credential: []byte("{}"), SignCount: count})
+		return f.db.InsertLocalSession(ctx, session, "", &store.PasskeyUse{ID: []byte("key"), Credential: []byte("{}"), SignCount: count})
 	}
 	if err := use(5); err != store.ErrAccountChanged {
 		t.Fatal("a repeated counter signed in")
@@ -653,7 +676,7 @@ func TestResetRemovesPasskeys(t *testing.T) {
 	bob := f.browser(t)
 	_, page = bob.get(link)
 	bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "password": {"battery staple"}, "confirm": {"battery staple"}})
-	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("intruder"), Username: "bob", Name: "k", Credential: []byte("{}"), Created: time.Now()}); err != nil {
+	if err := f.db.AddPasskey(ctx, store.Passkey{ID: []byte("intruder"), Username: "bob", Name: "k", Credential: []byte("{}"), Created: time.Now()}, liveSession(t, f.db, "bob")); err != nil {
 		t.Fatal(err)
 	}
 	_, page = admin.post("/admin/reset", url.Values{"csrf": {csrf}, "username": {"bob"}})
@@ -742,4 +765,82 @@ func TestSessionsFromOtherModesAreDeleted(t *testing.T) {
 	if err != nil || n != 2 || sessions(t, f.db) != 1 {
 		t.Fatal(n, err)
 	}
+}
+
+func TestProxyGroupsHeaderRules(t *testing.T) {
+	cfg := &config.Config{Server: config.Server{Auth: config.Auth{Mode: config.AuthProxy, Proxy: config.ProxyAuth{UserHeader: "Remote-User", GroupsHeader: "Remote-Groups", TrustedProxies: []string{"127.0.0.1"}}}}}
+	req := func(groups ...string) *http.Request {
+		r := &http.Request{RemoteAddr: "127.0.0.1:5", Header: http.Header{"Remote-User": {"alice"}}}
+		if groups != nil {
+			r.Header["Remote-Groups"] = groups
+		}
+		return r
+	}
+	if _, g, ok := proxyIdentity(cfg, req("zeta, alpha,alpha, ")); !ok || strings.Join(g, ",") != "alpha,zeta" {
+		t.Fatal(g, ok)
+	}
+	if _, _, ok := proxyIdentity(cfg, req("family", "admins")); ok {
+		t.Fatal("repeated groups header accepted")
+	}
+	many := make([]string, 513)
+	for i := range many {
+		many[i] = "g" + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + strings.Repeat("y", i/26)
+	}
+	if _, _, ok := proxyIdentity(cfg, req(strings.Join(many, ","))); ok {
+		t.Fatal("over 512 groups accepted")
+	}
+	if _, g, ok := proxyIdentity(cfg, req()); !ok || len(g) != 0 {
+		t.Fatal("no groups header")
+	}
+}
+
+func TestLocalOnlyAdministratorsEditOpenPapers(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	f.s.Editorial = nil
+	admin := f.browser(t)
+	admin.setup("ada", "correct horse")
+	_, page := admin.get("/")
+	scopeAda, err := auth.AuthenticateReader(context.Background(), f.db, f.cfg, cookie(t, admin, "nd_session"), time.Now(), time.Hour)
+	if err != nil || !scopeAda.CanEdit() {
+		t.Fatal("the administrator cannot edit the open paper", err)
+	}
+	_, page = admin.get("/admin")
+	_, page = admin.post("/admin/invite", url.Values{"csrf": {hidden(t, page, "csrf")}})
+	link := linkPattern.FindString(page)
+	bob := f.browser(t)
+	_, page = bob.get(link)
+	bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "username": {"bob"}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	scopeBob, err := auth.AuthenticateReader(context.Background(), f.db, f.cfg, cookie(t, bob, "nd_session"), time.Now(), time.Hour)
+	if err != nil || scopeBob.CanEdit() || len(scopeBob.Papers()) != 1 {
+		t.Fatal("an invited reader may edit the open paper", err)
+	}
+	// A removed account's session never reads again, even if it slipped in.
+	if err := f.db.RemoveAccount(context.Background(), "bob"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	key := random()
+	_ = f.db.InsertSession(context.Background(), auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: config.LocalIssuer, Subject: "bob", CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(time.Hour)})
+	if _, err := auth.AuthenticateReader(context.Background(), f.db, f.cfg, key, now, time.Hour); err != auth.ErrUnauthorized {
+		t.Fatal("removed account's session authenticated", err)
+	}
+}
+
+func cookie(t *testing.T, b *browser, name string) string {
+	t.Helper()
+	u, _ := url.Parse(b.f.http.URL)
+	for _, c := range b.client.Jar.Cookies(u) {
+		if c.Name == name {
+			return c.Value
+		}
+	}
+	t.Fatalf("no %s cookie", name)
+	return ""
+}
+
+func TestSignInPagesClearTheOfflineCopy(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	f.browser(t).setup("ada", "correct horse")
+	r, page := f.browser(t).get("/archive")
+	expect(t, r, page, http.StatusUnauthorized, `data-logout="true"`)
 }

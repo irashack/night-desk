@@ -141,9 +141,10 @@ server:
   administrator cannot be removed or demoted.
 - **What each account reads.** A paper whose `readers` list is empty is read by
   every account. To keep a paper to some accounts, name them:
-  `readers: [{subject: alice}]` (omit `issuer` in this mode). An account's own paper
-  (the one at `/`, whose sections it may edit) is the first paper that names it, or
-  else the first open paper. Local accounts have no groups.
+  `readers: [{subject: alice}]` (omit `issuer` in this mode). An account's own paper,
+  the one at `/` whose sections it may edit, is the first paper that names it. For
+  an administrator with no named paper, it is the first open paper; other accounts
+  read open papers without editing them. Local accounts have no groups.
 - **Passkeys.** With `passkeys: true`, each reader may add passkeys under
   **Account** (which asks for their password again) and use **Sign in with a
   passkey**. Browsers allow passkeys only on
@@ -181,7 +182,8 @@ papers:
 ```
 
 Configure the proxy to **replace** these headers on every request, so a client
-cannot supply its own; Night Desk refuses a request carrying the user header twice.
+cannot supply its own; Night Desk refuses a request carrying either header twice,
+or more than 512 groups.
 Sessions follow the header: when it names someone else, or the groups change, the
 old session is not used. There is no sign-in page or sign-out in this mode; sign
 out at the proxy. `trusted_proxies` may not contain `0.0.0.0/0` or `::/0`.
@@ -195,8 +197,11 @@ not loopback, private (RFC 1918, unique local IPv6), link-local or CGNAT (Tailsc
 a container these are private, so the container's usual `0.0.0.0:8080` passes,
 while a host with a public address fails. Publishing the port does not change what
 the container sees, so publish it only to a private address (for example
-`--publish 127.0.0.1:8080:8080`). As a second guard, requests from a public client
-address are refused with 403. To serve a public address anyway, set:
+`--publish 127.0.0.1:8080:8080`). They also refuse a `public_base_url` that may be
+public: anything but `localhost`, a loopback or private address, or a name ending
+in `.local`, `.lan`, `.home.arpa`, `.internal` or `.localdomain`. As a last guard,
+requests from a public client address are refused with 403. To serve a public
+address anyway, set:
 
 ```yaml
 server:

@@ -49,9 +49,6 @@ type accountRow struct {
 	Passkeys          int
 }
 
-// maxPasskeys bounds an account's passkeys.
-const maxPasskeys = 20
-
 func (s *Server) renderAuth(w http.ResponseWriter, status int, v authView) {
 	if v.Title == "" {
 		v.Title = "Sign in"
@@ -155,11 +152,11 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, issuer, su
 // startLocalSession signs a local account in, refusing (with
 // store.ErrAccountChanged) when its password changed or it was removed after
 // verifiedAt, or the passkey use cannot be recorded.
-func (s *Server) startLocalSession(w http.ResponseWriter, r *http.Request, username string, verifiedAt time.Time, use *store.PasskeyUse) error {
+func (s *Server) startLocalSession(w http.ResponseWriter, r *http.Request, username, verifiedHash string, use *store.PasskeyUse) error {
 	key := random()
 	now := s.now()
 	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: config.LocalIssuer, Subject: username, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime())}
-	if err := s.Store.InsertLocalSession(r.Context(), session, verifiedAt, use); err != nil {
+	if err := s.Store.InsertLocalSession(r.Context(), session, verifiedHash, use); err != nil {
 		return err
 	}
 	if old, e := r.Cookie("nd_session"); e == nil {
@@ -193,16 +190,20 @@ func (s *Server) localLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		s.loginPage(w, r, http.StatusForbidden, authView{Error: "The form expired. Please try again."})
 		return
 	}
-	username, _ := store.NormalUsername(r.PostForm.Get("username"))
+	username, valid := store.NormalUsername(r.PostForm.Get("username"))
 	next := returnPath(r.PostForm.Get("next"))
 	v := authView{Username: username, Next: next}
+	if !valid {
+		// No such account can exist; one shared key keeps made-up names from
+		// filling the limiter.
+		username = ""
+	}
 	keys := limitKeys(r, "user:"+username)
 	if wait := s.limiter.Attempt(keys...); wait > 0 {
 		v.Error = waitMessage(wait)
 		s.loginPage(w, r, http.StatusTooManyRequests, v)
 		return
 	}
-	verifiedAt := s.now()
 	account, err := s.Store.Account(r.Context(), username)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Sign-in unavailable", 500)
@@ -221,7 +222,7 @@ func (s *Server) localLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.limiter.Succeed(keys...)
-	if err = s.startLocalSession(w, r, account.Username, verifiedAt, nil); errors.Is(err, store.ErrAccountChanged) {
+	if err = s.startLocalSession(w, r, account.Username, account.PasswordHash, nil); errors.Is(err, store.ErrAccountChanged) {
 		v.Error = "Your account changed while you signed in. Try again."
 		s.loginPage(w, r, http.StatusConflict, v)
 		return
@@ -322,7 +323,7 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	if s.Log != nil {
 		s.Log.Info("first account created", "username", username)
 	}
-	if err = s.startLocalSession(w, r, username, s.now(), nil); err != nil {
+	if err = s.startLocalSession(w, r, username, hash, nil); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
@@ -411,7 +412,7 @@ func (s *Server) inviteSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
-	if err = s.startLocalSession(w, r, username, s.now(), nil); err != nil {
+	if err = s.startLocalSession(w, r, username, passwordHash, nil); err != nil {
 		http.Error(w, "Sign-in unavailable", 500)
 		return
 	}
@@ -501,7 +502,11 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keep := current(r).scope.Session().Hash
-	if err = s.Store.SetPassword(r.Context(), a.Username, hash, s.now(), &keep); err != nil {
+	if err = s.Store.SetPassword(r.Context(), a.Username, a.PasswordHash, hash, s.now(), &keep); errors.Is(err, store.ErrAccountChanged) {
+		v.Error = "Your password was changed elsewhere meanwhile. Reload the page and try again."
+		s.renderAuth(w, http.StatusConflict, v)
+		return
+	} else if err != nil {
 		http.Error(w, "Account unavailable", 500)
 		return
 	}
@@ -871,7 +876,6 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 429, waitMessage(wait))
 		return
 	}
-	verifiedAt := s.now()
 	parsed, err := protocol.ParseCredentialRequestResponseBytes(v.Credential)
 	if err != nil {
 		jsonError(w, 400, "The passkey did not work.")
@@ -892,15 +896,18 @@ func (s *Server) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cred.Authenticator.CloneWarning {
+		// The counter went backwards: two copies of the key exist. Remove it
+		// so the copy cannot keep trying until it counts past the original.
+		_ = s.Store.RemovePasskey(r.Context(), found.Username, cred.ID)
 		if s.Log != nil {
-			s.Log.Warn("passkey signature counter went backwards; refusing it", "username", found.Username)
+			s.Log.Warn("passkey signature counter went backwards; removed it", "username", found.Username)
 		}
-		jsonError(w, 401, "That passkey may have been copied. Remove it from your account and add it again.")
+		jsonError(w, 401, "That passkey may have been copied, so it was removed. Sign in with your password and add it again.")
 		return
 	}
 	stored, _ := json.Marshal(cred)
 	use := &store.PasskeyUse{ID: cred.ID, Credential: stored, SignCount: cred.Authenticator.SignCount}
-	if err = s.startLocalSession(w, r, found.Username, verifiedAt, use); errors.Is(err, store.ErrAccountChanged) {
+	if err = s.startLocalSession(w, r, found.Username, "", use); errors.Is(err, store.ErrAccountChanged) {
 		jsonError(w, 401, "That passkey was removed or used elsewhere at the same moment. Try again.")
 		return
 	} else if err != nil {
@@ -947,8 +954,8 @@ func (s *Server) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "Passkeys are unavailable.")
 		return
 	}
-	if len(u.creds) >= maxPasskeys {
-		jsonError(w, 400, fmt.Sprintf("An account can have at most %d passkeys.", maxPasskeys))
+	if len(u.creds) >= store.MaxPasskeys {
+		jsonError(w, 400, fmt.Sprintf("An account can have at most %d passkeys.", store.MaxPasskeys))
 		return
 	}
 	options, data, err := s.passkeys.BeginRegistration(u,
@@ -996,7 +1003,10 @@ func (s *Server) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		name = "Passkey"
 	}
 	stored, _ := json.Marshal(cred)
-	if err = s.Store.AddPasskey(r.Context(), store.Passkey{ID: cred.ID, Username: a.Username, Name: name, Credential: stored, SignCount: cred.Authenticator.SignCount, Created: s.now()}); err != nil {
+	if err = s.Store.AddPasskey(r.Context(), store.Passkey{ID: cred.ID, Username: a.Username, Name: name, Credential: stored, SignCount: cred.Authenticator.SignCount, Created: s.now()}, current(r).scope.Session().Hash); errors.Is(err, store.ErrTooManyPasskeys) {
+		jsonError(w, 400, fmt.Sprintf("An account can have at most %d passkeys.", store.MaxPasskeys))
+		return
+	} else if err != nil {
 		jsonError(w, 409, "That passkey is already registered.")
 		return
 	}
