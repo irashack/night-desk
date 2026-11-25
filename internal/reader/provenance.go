@@ -18,8 +18,8 @@ import (
 // the advisory checks code ran against Night Desk's stored copy of each source
 // when the edition was published.
 type provenanceView struct {
-	// Status is checked (nothing to report), notes (findings) or unchecked
-	// (no stored copy of the source to check against).
+	// Status is checked (nothing to report) or notes (findings). Stories
+	// with no stored source page to compare get no view at all.
 	Status  string
 	Summary string
 	Notes   []string
@@ -32,27 +32,13 @@ var warningPath = regexp.MustCompile(`^sections\[(\d+)\]\.items\[(\d+)\]\.(title
 
 var fieldNames = map[string]string{"title": "headline", "summary": "summary", "why": "“For you” line"}
 
-// note turns one stored source-check warning into a sentence for readers, or
-// "" for a warning that is not about the sources.
-func note(it edition.Item, field, source, rule string) (string, bool) {
+// note turns one stored source-check warning into a sentence for readers. For
+// a cited page the check could not compare it reports true; it
+// returns "" for a warning that is not about the sources.
+func note(field, rule string) (string, bool) {
 	if field == "url" || strings.HasPrefix(field, "sources[") {
-		outlet := it.Source
-		if strings.HasPrefix(field, "sources[") {
-			outlet = "another outlet"
-			if k, err := strconv.Atoi(source); err == nil && k < len(it.Sources) {
-				outlet = it.Sources[k].Outlet
-				if outlet == "" {
-					if u, err := url.Parse(it.Sources[k].URL); err == nil {
-						outlet = u.Hostname()
-					}
-				}
-			}
-		}
-		switch {
-		case strings.Contains(rule, "no stored snapshot"):
-			return "Not checked against " + outlet + ": Night Desk kept no copy of that page.", true
-		case strings.Contains(rule, "fetch failed"):
-			return "Not checked against " + outlet + ": no text could be read from the page.", true
+		if strings.Contains(rule, "no stored snapshot") || strings.Contains(rule, "fetch failed") {
+			return "unverified", true
 		}
 		return "", false
 	}
@@ -60,11 +46,11 @@ func note(it edition.Item, field, source, rule string) (string, bool) {
 	code, value, _ := strings.Cut(rule, ": ")
 	switch code {
 	case "unsupported-number":
-		return fmt.Sprintf("The figure “%s” in the %s was not found in the source.", value, name), false
+		return fmt.Sprintf("The figure “%s” in the %s is not in the source.", value, name), false
 	case "unsupported-name":
-		return fmt.Sprintf("The name “%s” in the %s was not found in the source.", value, name), false
+		return fmt.Sprintf("The name “%s” in the %s is not in the source.", value, name), false
 	case "unsupported-former-title":
-		return fmt.Sprintf("The title “%s” in the %s was not found in the source.", value, name), false
+		return fmt.Sprintf("The title “%s” in the %s is not in the source.", value, name), false
 	case "truncated":
 		return fmt.Sprintf("The %s may be cut off.", name), false
 	}
@@ -86,10 +72,6 @@ func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at 
 	type found struct {
 		// notes lists what the check could not find.
 		notes []string
-		// unchecked lists each reason a source went unchecked, in order, and
-		// how many cited pages it covers.
-		unchecked []string
-		pages     map[string]int
 		// unverified holds the cited addresses the check had no copy of.
 		unverified map[string]bool
 	}
@@ -105,13 +87,13 @@ func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at 
 			continue
 		}
 		it := ed.Sections[i].Items[j]
-		text, unverified := note(it, strings.SplitN(m[3], ".", 2)[0], m[4], w.Rule)
+		text, unverified := note(strings.SplitN(m[3], ".", 2)[0], w.Rule)
 		if text == "" {
 			continue
 		}
 		f := byItem[[2]int{i, j}]
 		if f == nil {
-			f = &found{pages: map[string]int{}, unverified: map[string]bool{}}
+			f = &found{unverified: map[string]bool{}}
 			byItem[[2]int{i, j}] = f
 		}
 		switch {
@@ -121,10 +103,6 @@ func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at 
 				continue
 			}
 			f.unverified[link] = true
-			if f.pages[text] == 0 {
-				f.unchecked = append(f.unchecked, text)
-			}
-			f.pages[text]++
 		case !contains(f.notes, text):
 			f.notes = append(f.notes, text)
 		}
@@ -133,43 +111,66 @@ func provenanceFrom(ed *edition.Edition, warnings []store.DiagnosticProblem, at 
 	out := map[string]*provenanceView{}
 	for i, sec := range ed.Sections {
 		for j, it := range sec.Items {
-			cited := len(citedURLs(it))
-			v := &provenanceView{Status: "checked", Summary: "Checked against the source", Checked: checked, Compared: cited, Cited: cited}
+			cited := citedURLs(it)
+			v := &provenanceView{Status: "checked", Checked: checked, Compared: len(cited), Cited: len(cited)}
+			unverified := map[string]bool{}
 			if f := byItem[[2]int{i, j}]; f != nil {
+				// Only findings reach the reader: a page Night Desk kept no
+				// copy of is the usual case (link-only papers) and nothing
+				// the reader can act on.
 				v.Notes = f.notes
-				for _, text := range f.unchecked {
-					if n := f.pages[text]; n > 1 {
-						text = fmt.Sprintf("%s (%d pages)", text, n)
-					}
-					v.Notes = append(v.Notes, text)
-				}
-				v.Compared = max(cited-len(f.unverified), 0)
-				var parts []string
-				switch len(f.notes) {
-				case 0:
-				case 1:
-					parts = append(parts, "1 note from the source check")
-				default:
-					parts = append(parts, fmt.Sprintf("%d notes from the source check", len(f.notes)))
-				}
-				switch {
-				case v.Compared == 0 && len(f.notes) == 0:
-					v.Status, parts = "unchecked", []string{"Not checked against the source"}
-				case v.Compared > 0 && v.Compared < cited:
-					v.Status, parts = "notes", append(parts, fmt.Sprintf("checked against %d of %d sources", v.Compared, cited))
-				default:
-					v.Status = "notes"
-				}
-				if len(parts) == 0 {
-					v.Status, parts = "checked", []string{"Checked against the source"}
-				}
-				v.Summary = strings.Join(parts, " · ")
-				v.Summary = strings.ToUpper(v.Summary[:1]) + v.Summary[1:]
+				unverified = f.unverified
+				v.Compared = max(len(cited)-len(f.unverified), 0)
+			}
+			switch {
+			case len(v.Notes) == 1:
+				v.Status, v.Summary = "notes", "1 detail to double-check"
+			case len(v.Notes) > 1:
+				v.Status, v.Summary = "notes", fmt.Sprintf("%d details to double-check", len(v.Notes))
+			case v.Compared == 0:
+				// Nothing was compared: say nothing rather than warn.
+				continue
+			default:
+				v.Summary = "Checked against " + comparedOutlets(it, unverified)
 			}
 			out[it.ID] = v
 		}
 	}
 	return out
+}
+
+// comparedOutlets names the outlets whose pages the check compared a story
+// with: "Wire", "Wire and Herald", or "Wire and 2 other sources".
+func comparedOutlets(it edition.Item, unverified map[string]bool) string {
+	var names []string
+	add := func(link, outlet string) {
+		if link == "" || unverified[link] {
+			return
+		}
+		if outlet == "" {
+			if u, err := url.Parse(link); err == nil && u.Hostname() != "" {
+				outlet = strings.TrimPrefix(u.Hostname(), "www.")
+			} else {
+				outlet = "the source"
+			}
+		}
+		if !contains(names, outlet) {
+			names = append(names, outlet)
+		}
+	}
+	add(it.URL, it.Source)
+	for _, s := range it.Sources {
+		add(s.URL, s.Outlet)
+	}
+	switch len(names) {
+	case 0:
+		return "the source"
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	}
+	return fmt.Sprintf("%s and %d other sources", names[0], len(names)-1)
 }
 
 // citedURL is the address a source-check path names: the story's own link, or

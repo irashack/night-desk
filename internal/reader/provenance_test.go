@@ -20,6 +20,7 @@ func TestProvenanceFromWarnings(t *testing.T) {
 			{ID: "unchecked", Source: "Herald", URL: "https://herald.example/a"},
 			{ID: "partial", Source: "Herald", URL: "https://herald.example/b", Sources: []edition.Source{{URL: "https://c.example/1", Outlet: "C"}, {URL: "https://d.example/1", Outlet: "D"}}},
 			{ID: "twice", Source: "Wire", URL: "https://wire.example/1", Sources: []edition.Source{{URL: "https://wire.example/2", Outlet: "Wire"}, {URL: "https://wire.example/3", Outlet: "Wire"}}},
+			{ID: "many", Source: "Wire", URL: "https://wire.example/m", Sources: []edition.Source{{URL: "https://www.herald.example/m"}, {URL: "https://c.example/m", Outlet: "C"}}},
 		}},
 	}}
 	warnings := []store.DiagnosticProblem{
@@ -38,27 +39,32 @@ func TestProvenanceFromWarnings(t *testing.T) {
 	}
 	at := time.Date(2026, 11, 25, 5, 4, 0, 0, time.UTC)
 	got := provenanceFrom(ed, warnings, at)
-	if v := got["clean"]; v.Status != "checked" || len(v.Notes) != 0 || v.Checked != "Nov 25, 5:04 am UTC" {
+	// A story citing no page has nothing to compare: no line.
+	if v := got["clean"]; v != nil {
 		t.Fatalf("clean: %+v", v)
 	}
 	v := got["numbers"]
-	if v.Status != "notes" || v.Summary != "2 notes from the source check · checked against 1 of 2 sources" || len(v.Notes) != 3 {
+	if v.Status != "notes" || v.Summary != "2 details to double-check" || len(v.Notes) != 2 || v.Compared != 1 || v.Cited != 2 || v.Checked != "Nov 25, 5:04 am UTC" {
 		t.Fatalf("numbers: %+v", v)
 	}
-	want := []string{"The figure “42” in the summary was not found in the source.", "The name “Smith” in the headline was not found in the source.", "Not checked against second.example: no text could be read from the page."}
+	want := []string{"The figure “42” in the summary is not in the source.", "The name “Smith” in the headline is not in the source."}
 	for i := range want {
 		if v.Notes[i] != want[i] {
 			t.Fatalf("note %d = %q, want %q", i, v.Notes[i], want[i])
 		}
 	}
-	if v := got["unchecked"]; v.Status != "unchecked" || v.Notes[0] != "Not checked against Herald: Night Desk kept no copy of that page." {
+	// No stored copy of the only source: no warning, no line.
+	if v := got["unchecked"]; v != nil {
 		t.Fatalf("unchecked: %+v", v)
 	}
-	if v := got["partial"]; v.Status != "notes" || v.Summary != "Checked against 2 of 3 sources" || v.Notes[0] != "Not checked against D: Night Desk kept no copy of that page." {
+	if v := got["partial"]; v.Status != "checked" || v.Summary != "Checked against Herald and C" || len(v.Notes) != 0 {
 		t.Fatalf("partial: %+v", v)
 	}
-	if v := got["twice"]; v.Summary != "Checked against 1 of 3 sources" || len(v.Notes) != 1 || v.Notes[0] != "Not checked against Wire: Night Desk kept no copy of that page. (2 pages)" || v.Compared != 1 || v.Cited != 3 {
+	if v := got["twice"]; v.Status != "checked" || v.Summary != "Checked against Wire" || len(v.Notes) != 0 || v.Compared != 1 || v.Cited != 3 {
 		t.Fatalf("twice: %+v", v)
+	}
+	if v := got["many"]; v.Summary != "Checked against Wire and 2 other sources" {
+		t.Fatalf("many: %+v", v)
 	}
 }
 
@@ -85,23 +91,28 @@ func TestProvenanceOnPages(t *testing.T) {
 	}
 	html := body(t, f.get(t, "/e/"+date))
 	for _, want := range []string{
-		`<details class="pv notes"><summary>1 note from the source check</summary><ul><li>The figure “1,200” in the summary was not found in the source.</li>`,
-		`<details class="pv unchecked"><summary>Not checked against the source</summary><ul><li>Not checked against Local: Night Desk kept no copy of that page.</li>`,
+		`<details class="pv notes"><summary>1 detail to double-check</summary><ul><li>The figure “1,200” in the summary is not in the source.</li>`,
 		`<p class="pv-at">Checked against sources `,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("edition lacks %q", want)
 		}
 	}
+	// A story with no stored copy of its page shows no warning.
+	for _, gone := range []string{"Not checked", "kept no copy of that page", "pv unchecked"} {
+		if strings.Contains(html, gone) {
+			t.Fatalf("edition still shows %q", gone)
+		}
+	}
 	html = body(t, f.get(t, "/read/"+date+"/story-a"))
-	if !strings.Contains(html, `<details class="pv notes"><summary>1 note from the source check</summary><p>When this edition went out on `) || !strings.Contains(html, "1,200") {
+	if !strings.Contains(html, `<details class="pv notes"><summary>1 detail to double-check</summary><p>When this edition went out, `) || !strings.Contains(html, "1,200") {
 		t.Fatal("reading view lacks the source check")
 	}
 	// A later publish without findings replaces the record.
 	if err := f.db.PublishWithDiagnostics(t.Context(), f.a, date, ed, nil, store.PublishDiagnostics{Path: "put", SourceChecks: []store.SourceCheckCount{{Status: "passed", Rule: "source text", Count: 1}}}); err != nil {
 		t.Fatal(err)
 	}
-	if html := body(t, f.get(t, "/e/"+date)); strings.Contains(html, "1,200") || !strings.Contains(html, `<p class="pv">Checked against the source</p>`) {
+	if html := body(t, f.get(t, "/e/"+date)); strings.Contains(html, "1,200") || !strings.Contains(html, `<p class="pv">Checked against `) {
 		t.Fatal("stale source-check record shown")
 	}
 }
