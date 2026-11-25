@@ -647,3 +647,31 @@ func TestBoxes(t *testing.T) {
 		t.Fatal("uncited market box displayed")
 	}
 }
+
+// The CSP's style-src 'self' blocks inline styles, so the signed-out page must
+// load its styles from a static file the reader serves.
+func TestSignInPageStylesAllowedByCSP(t *testing.T) {
+	f := setup(t)
+	r := f.get(t, "/")
+	if r.StatusCode != 401 || r.Header.Get("Content-Security-Policy") != CSP {
+		t.Fatal(r.StatusCode, r.Header.Get("Content-Security-Policy"))
+	}
+	page := body(t, r)
+	if strings.Contains(page, "<style") || strings.Contains(page, " style=") {
+		t.Fatal("sign-in page has inline styles the CSP blocks")
+	}
+	href := asset("signin.css")
+	if href == "" || !strings.Contains(page, `<link rel="stylesheet" href="`+href+`">`) {
+		t.Fatalf("sign-in page does not link %q", href)
+	}
+	css := f.get(t, href)
+	if css.StatusCode != 200 || !strings.HasPrefix(css.Header.Get("Content-Type"), "text/css") || !strings.Contains(body(t, css), "radial-gradient") {
+		t.Fatal("signin.css not served", css.StatusCode, css.Header.Get("Content-Type"))
+	}
+	for _, name := range []string{"templates/reader.html"} {
+		b, err := web.Files.ReadFile(name)
+		if err != nil || strings.Contains(string(b), "<style") || strings.Contains(string(b), " style=") {
+			t.Fatalf("%s has inline styles the CSP blocks (%v)", name, err)
+		}
+	}
+}
