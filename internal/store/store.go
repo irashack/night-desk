@@ -180,6 +180,11 @@ func publishTx(ctx context.Context, tx *sql.Tx, eventPaper config.Paper, date st
 		return err
 	}
 	if same {
+		// Publishing still vouches for the edition: an earlier deadline
+		// publication's "unreviewed" marker clears, as on any replacement.
+		if _, err = tx.ExecContext(ctx, "DELETE FROM edition_review WHERE paper_id=? AND date=?", paper, date); err != nil {
+			return err
+		}
 		return publishDiagnosticsTx(ctx, tx, eventPaper, date, diagnostics...)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO editions(paper_id,date,schema,body,published_at,layout,coverage) VALUES (?,?,?,?,?,?,?) ON CONFLICT(paper_id,date) DO UPDATE SET schema=excluded.schema,body=excluded.body,published_at=excluded.published_at,layout=excluded.layout,coverage=excluded.coverage`, paper, date, e.Schema, string(body), publishedAt, rawLayout, coverage)
