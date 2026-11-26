@@ -96,6 +96,39 @@ func (s *Store) Dates(ctx context.Context, scope auth.PaperScope, offset, limit 
 	}
 	return dates, rows.Err()
 }
+
+// ArchiveDay is one archive row: an edition's date and the title of its lead
+// story, empty when the stored edition names no lead that it contains.
+type ArchiveDay struct {
+	Date string
+	Lead string
+}
+
+// ArchiveDays lists a paper's edition dates, newest first, each with its lead
+// headline, in a single query.
+func (s *Store) ArchiveDays(ctx context.Context, scope auth.PaperScope, offset, limit int) ([]ArchiveDay, error) {
+	paper, err := scopeID(scope)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT e.date,COALESCE((SELECT json_extract(i.value,'$.title')
+	 FROM json_each(e.body,'$.sections') AS s, json_each(s.value,'$.items') AS i
+	 WHERE json_extract(i.value,'$.id')=json_extract(e.body,'$.lead') LIMIT 1),'')
+	 FROM editions AS e WHERE e.paper_id=? ORDER BY e.date DESC LIMIT ? OFFSET ?`, paper, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	days := []ArchiveDay{}
+	for rows.Next() {
+		var d ArchiveDay
+		if err = rows.Scan(&d.Date, &d.Lead); err != nil {
+			return nil, err
+		}
+		days = append(days, d)
+	}
+	return days, rows.Err()
+}
 func (s *Store) EditionNumber(ctx context.Context, scope auth.PaperScope, date string) (int, error) {
 	paper, err := scopeID(scope)
 	if err != nil {
