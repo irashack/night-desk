@@ -52,7 +52,7 @@ papers:
         title: Economy
         required: true
         brief: Focus on household costs and local effects.
-    boxes: {weather: true, sun: true, solunar: true, markets: false}  # markets show in a section keyed economy
+    boxes: {weather: true, sun: true, solunar: true, markets: false}  # markets show only in a section keyed economy
     readers:
       - issuer: https://identity.example
         subject_file: /run/secrets/reader-subject
@@ -495,7 +495,9 @@ and linux/arm64. Deploy by the image's `@sha256:...` digest, not the mutable tag
 Mount writable storage at `/data`, owned by the container user (UID/GID 65532 by
 default, or the user you pass with `--user`), and keep the configuration in it as
 `/data/config.yaml` with `server.data_dir: .` and `server.listen: "0.0.0.0:8080"`;
-`nightdesk init --dir /data` writes exactly this layout. The image's default
+`nightdesk init --dir /data` writes exactly this layout. (With `--auth none` it writes
+`0.0.0.0:8080` only where all of the machine's addresses are private, as in a
+container, and `127.0.0.1:8080` otherwise.) The image's default
 command serves `/data/config.yaml`. The remaining root filesystem can be
 read-only.
 

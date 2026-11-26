@@ -124,7 +124,8 @@ returns `agent_role` on `nightdesk_paper`; take the role from that live response
    deadline, motto guidance, ordered sections, timezone, enabled boxes, current
    `reader_notes` and `agent_role`. Use the live configuration, not a
    paper-specific prompt. An absent motto policy means omit the motto; the deadline
-   is a local `HH:MM` publication target, not a server-side scheduler.
+   is the local `HH:MM` to publish by. At that time the server applies the paper's
+   `deadline_policy` to the day's unpublished draft, so publish before it.
 2. Call `nightdesk_read_feedback({"after": 0})` on the first run, or use the saved
    `next_cursor`. Results retain `events` and `next_cursor`. Resolve each event's
    (date, item_id) with `nightdesk_get_item({"date": date, "id": item_id})`; the

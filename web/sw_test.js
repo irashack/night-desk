@@ -102,3 +102,11 @@ test('a notification click opens the notified paper through /push/open', async (
   h.setNetwork(async () => { throw new Error('offline'); });
   assert.match(await (await h.navigate('/push/open')).text(), /owner-a/);
 });
+test('a server error on a dated page keeps the saved paper', async () => {
+  const h = harness();
+  h.setNetwork(async (req) => typeof req === 'string' ? new Response('asset') : documentResponse()); await h.navigate('/');
+  h.setNetwork(async () => new Response('Reader unavailable', {status: 500})); assert.equal((await h.navigate('/e/2026-10-27')).status, 500);
+  h.setNetwork(async () => { throw new Error('offline'); }); assert.match(await (await h.navigate('/e/2026-10-27')).text(), /owner-a/);
+  h.setNetwork(async () => new Response('Page not found', {status: 404})); await h.navigate('/e/2026-10-27');
+  h.setNetwork(async () => { throw new Error('offline'); }); assert.equal((await h.navigate('/e/2026-10-27')).status, 503);
+});

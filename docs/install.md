@@ -156,7 +156,9 @@ A new paper is blank until something publishes to it. To check sign-in and the
 reader before connecting an agent or a model, publish a one-story sample edition
 for today with the agent key `init` wrote (the key goes to curl on standard input,
 never on the command line); your agent or the worker replaces it when it publishes
-for the same date:
+for the same date. The section key must be one of the paper's: `news` is `init`'s
+default; a `--standalone` or `--interactive` paper starts with `world`, `science`,
+`technology` and `business`, or the sections you chose.
 
 ```sh
 TODAY="$(TZ=America/Chicago date +%F)"   # the paper's timezone

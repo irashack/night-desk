@@ -60,7 +60,7 @@
   // In the scrolling layouts the bar follows the page being read.
   let following = false;
   addEventListener('scroll', () => {
-    if (!book || layout === 'pages' || following) return;
+    if (!book || layout === 'pages' || following || busy) return;
     following = true;
     requestAnimationFrame(() => {
       following = false;
@@ -189,12 +189,6 @@
     measure();
     if ('ResizeObserver' in window) new ResizeObserver(measure).observe(controls);
   }
-  document.addEventListener('scroll', () => {
-    if (!book || busy || layout === 'pages') return;
-    let visible = 0;
-    pages.forEach((p, i) => { if (p.getBoundingClientRect().top <= window.innerHeight * 0.4) visible = i; });
-    if (visible !== cur) { cur = visible; sync(); }
-  }, {passive: true});
   if (book) {
     const target = hashTarget(location.hash), hashPage = pages.indexOf(target?.closest('.page'));
     if (hashPage >= 0) cur = hashPage;

@@ -51,7 +51,7 @@ func backend(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 	usage := func() int {
-		fmt.Fprintln(errOut, "usage: nightdesk serve --config <file> | migrate | key issue <paper> [--label L] [--capabilities a,b,... | --worker] | key revoke <id> | key list [paper] | backup <dir> (administrative commands accept --config <file>, default nightdesk.yaml)")
+		fmt.Fprintln(errOut, "usage: nightdesk serve --config <file> | migrate | key issue <paper> [--label L] [--capabilities a,b,... | --worker] | key revoke <id> | key list [paper] | backup <dir> | accounts ... | quality ... (administrative commands accept --config <file>, default nightdesk.yaml)")
 		return 2
 	}
 	var keyOptions issueKeyOptions
