@@ -91,6 +91,6 @@
 /* A phone shows the lead story first; the weather box follows it. */
 @media(max-width:959px){.book:not(.reading) .front{display:flex;flex-direction:column}.book:not(.reading) .front>.wx{order:1}.book:not(.reading) .front>.wx~:not(.front-lead){order:2}}
 .search-form input[type=search]{font:16px var(--f-body);border-color:var(--p-muted);background:var(--p-bg);color:var(--p-ink)}.search-form button,.row-actions button{min-height:36px}.search-form button{padding:8px 18px;border:0;border-radius:999px;background:var(--p-ink);color:var(--p-bg);font:600 13px var(--f-label)}.search-form input[type=checkbox]{width:18px;height:18px;vertical-align:-4px;accent-color:var(--p-accent)}
-.days{list-style:none;padding:0;border-bottom:1px solid var(--p-rule)}.days li{margin:0!important;border-top:1px solid var(--p-rule)}.days a{display:block;padding:12px 0;font:700 18px var(--f-head);color:inherit;text-decoration:none}
+.days{list-style:none;padding:0;border-bottom:1px solid var(--p-rule)}.days li{margin:0!important;border-top:1px solid var(--p-rule)}.days a{display:block;padding:12px 0;font:700 18px var(--f-head);color:inherit;text-decoration:none}.days .day-date{display:block}.days .day-lead{display:block;margin-top:4px;font:400 16px/1.35 var(--f-body,var(--f-head));color:var(--p-muted);overflow-wrap:anywhere}
 .message{text-align:center}
 @media(pointer:coarse){.search-form button,.row-actions button{min-height:44px}}@media(max-width:520px){.mast .dateline span:first-child{flex-basis:100%}}

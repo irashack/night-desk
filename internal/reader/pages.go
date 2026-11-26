@@ -66,7 +66,7 @@ type view struct {
 	Sections                             []sectionView
 	Facts                                almanac.Day
 	Weather                              *weather.Day
-	Dates                                []string
+	Dates                                []store.ArchiveDay
 	Previous, Next                       int
 	Unreviewed                           bool
 	// Checked is when the edition's stories were checked against their sources.
@@ -358,7 +358,7 @@ func (s *Server) archive(w http.ResponseWriter, r *http.Request) {
 		}
 		page = n
 	}
-	dates, err := s.Store.Dates(r.Context(), current(r).scope.PaperScope(), (page-1)*60, 61)
+	dates, err := s.Store.ArchiveDays(r.Context(), current(r).scope.PaperScope(), (page-1)*60, 61)
 	if err != nil {
 		http.Error(w, "Reader unavailable", 500)
 		return

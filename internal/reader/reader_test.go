@@ -593,6 +593,9 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	if len(dates) != 60 || !strings.Contains(html, "?page=2") || dates[0][1] < dates[59][1] {
 		t.Fatal("bad archive page one")
 	}
+	if n := strings.Count(html, `class="day-lead">This morning&#39;s reporting from the desk</span>`); n != 60 {
+		t.Fatalf("archive shows %d lead headlines, want 60", n)
+	}
 	r = f.get(t, "/archive?page=2")
 	html = body(t, r)
 	if len(regexp.MustCompile(`href="/e/`).FindAllString(html, -1)) != 5 {
