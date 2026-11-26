@@ -28,6 +28,19 @@ and stored data keep the [upgrade promise](upgrading.md).
 - NewsAPI and GNews as optional sources, if feeds prove thin.
 - A default deadline policy other than `hold`, if experience with unattended
   papers shows `publish-unreviewed` is the better default.
+- The section editor's history: the paper already keeps 50 numbered editorial
+  revisions with restore, and sections have `required`, `find_sources` and `lean`
+  flags, but `/sections` shows neither; an undo or recent-changes panel and the
+  flags as toggles.
+- Archive search by byline, a column's stance and further-coverage outlets
+  (schema v2 fields the full-text index does not cover yet).
+- One gathering worker for several papers: one process looping over several
+  worker keys, sharing its models and host cool-off, instead of one container
+  per paper.
+- The markets box in a section of the operator's choice; today it shows only in a
+  section keyed `economy`, which standalone papers do not have.
+- `nightdesk accounts role` (make an account an administrator or a reader without
+  the web page) and `nightdesk key rotate` (issue a matching key, revoke the old).
 
 ## Credits
 
