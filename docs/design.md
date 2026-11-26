@@ -291,7 +291,7 @@ editorial revisions or reader notes; see [upgrading](upgrading.md).
 | `GET /api/v1/paper/revisions` | read | Kept revisions, newest first |
 | `POST /api/v1/paper/restore` | edit | Save a copy of revision n as the newest; `0` returns to the declaration |
 | `GET`/`PUT /api/v1/paper/notes` | read / edit | The agent-maintained reader notes |
-| `GET /api/v1/feedback?after=<cursor>` | read | Reader events (up, down, save, unsave) since a cursor |
+| `GET /api/v1/feedback?after=<cursor>` | read | Reader events (up, down, save, unsave) since a cursor, each with an opaque per-paper `reader_id` |
 | `GET /api/v1/editions`, `GET /api/v1/editions/{date}` | read | Published editions |
 | `GET /api/v1/items/{date}/{id}` | read | One published item with its section and publication time |
 | `PUT /api/v1/editions/{date}` | publish | Publish or replace an edition (v1 or v2) idempotently; `author` papers only |

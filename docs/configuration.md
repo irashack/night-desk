@@ -86,7 +86,9 @@ Put the service behind an HTTPS reverse proxy. Authenticate agent requests with
 draft through `POST /api/v1/drafts/{date}/publish` after review, or through the
 deadline policy. Inspect `GET /api/v1/paper` for current rules and
 `GET /api/v1/feedback?after=0&limit=100` for feedback. The next cursor is
-`next_cursor`; `events` is always an array. Failed image retention yields warnings,
+`next_cursor`; `events` is always an array. Each event names its reader only by
+`reader_id`, an opaque id that stays the same for one reader of one paper and
+cannot be turned back into the reader's sign-in identity. Failed image retention yields warnings,
 not a failed publication. Reader rendering must use the local `edition_images`
 associations, never remote URLs. Image downloads also have an eight-million-pixel
 decoded limit to bound decompression costs.
