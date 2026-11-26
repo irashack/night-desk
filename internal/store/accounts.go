@@ -350,6 +350,9 @@ func signOutAccountTx(ctx context.Context, tx *sql.Tx, username string, keep *[3
 // ErrTooManyPasskeys refuses a passkey beyond MaxPasskeys.
 var ErrTooManyPasskeys = errors.New("too many passkeys")
 
+// ErrPasskeyExists refuses a credential that is already registered.
+var ErrPasskeyExists = errors.New("passkey already registered")
+
 // MaxPasskeys bounds an account's passkeys.
 const MaxPasskeys = 20
 
@@ -368,6 +371,13 @@ func (s *Store) AddPasskey(ctx context.Context, p Passkey, session [32]byte) err
 	}
 	if !live {
 		return ErrAccountChanged
+	}
+	var exists bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM passkeys WHERE credential_id=?)`, p.ID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrPasskeyExists
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO passkeys(credential_id,username,name,credential,sign_count,created_at) SELECT ?,?,?,?,?,? WHERE (SELECT count(*) FROM passkeys WHERE username=?)<?`, p.ID, p.Username, p.Name, string(p.Credential), p.SignCount, stamp(p.Created), p.Username, MaxPasskeys)
 	if err != nil {

@@ -102,7 +102,20 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	return strings.EqualFold(origin, want.Scheme+"://"+want.Host)
+	return strings.EqualFold(origin, publicOrigin(want))
+}
+
+// publicOrigin is the origin browsers send for the public base URL: without
+// the scheme's default port, which they never include.
+func publicOrigin(u *url.URL) string {
+	host, port := u.Hostname(), u.Port()
+	if port == "" || u.Scheme == "https" && port == "443" || u.Scheme == "http" && port == "80" {
+		if strings.Contains(host, ":") {
+			return u.Scheme + "://[" + host + "]"
+		}
+		return u.Scheme + "://" + host
+	}
+	return u.Scheme + "://" + net.JoinHostPort(host, port)
 }
 
 // validForm checks a pre-sign-in form: same origin and the double-submit token.
@@ -755,7 +768,7 @@ func newPasskeys(cfg *config.Config) (*webauthn.WebAuthn, string, error) {
 	if net.ParseIP(u.Hostname()) != nil {
 		return nil, "passkeys need a domain name in server.public_base_url, not an IP address; they are off", nil
 	}
-	w, err := webauthn.New(&webauthn.Config{RPID: u.Hostname(), RPDisplayName: "Night Desk", RPOrigins: []string{u.Scheme + "://" + u.Host}})
+	w, err := webauthn.New(&webauthn.Config{RPID: u.Hostname(), RPDisplayName: "Night Desk", RPOrigins: []string{publicOrigin(u)}})
 	return w, "", err
 }
 
@@ -1013,8 +1026,14 @@ func (s *Server) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	if err = s.Store.AddPasskey(r.Context(), store.Passkey{ID: cred.ID, Username: a.Username, Name: name, Credential: stored, SignCount: cred.Authenticator.SignCount, Created: s.now()}, current(r).scope.Session().Hash); errors.Is(err, store.ErrTooManyPasskeys) {
 		jsonError(w, 400, fmt.Sprintf("An account can have at most %d passkeys.", store.MaxPasskeys))
 		return
-	} else if err != nil {
+	} else if errors.Is(err, store.ErrAccountChanged) {
+		jsonError(w, 409, "Your account changed. Sign in again, then add the passkey.")
+		return
+	} else if errors.Is(err, store.ErrPasskeyExists) {
 		jsonError(w, 409, "That passkey is already registered.")
+		return
+	} else if err != nil {
+		jsonError(w, 500, "The passkey could not be saved.")
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})

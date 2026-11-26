@@ -892,3 +892,33 @@ func TestProxyGroupChangeRefreshesPushGroups(t *testing.T) {
 		t.Fatal(g)
 	}
 }
+
+func TestPasskeyAlreadyRegistered(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	f.browser(t).setup("ada", "correct horse")
+	ctx := context.Background()
+	p := store.Passkey{ID: []byte("dup"), Username: "ada", Name: "k", Credential: []byte("{}"), Created: time.Now()}
+	if err := f.db.AddPasskey(ctx, p, liveSession(t, f.db, "ada")); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.AddPasskey(ctx, p, liveSession(t, f.db, "ada")); err != store.ErrPasskeyExists {
+		t.Fatal(err)
+	}
+}
+
+func TestPublicOriginDropsDefaultPort(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://paper.example":      "https://paper.example",
+		"https://paper.example:443/": "https://paper.example",
+		"https://paper.example:8443": "https://paper.example:8443",
+		"http://localhost:80":        "http://localhost",
+		"http://[::1]:8080":          "http://[::1]:8080",
+		"http://[::1]:80":            "http://[::1]",
+		"https://Paper.Example:443":  "https://Paper.Example",
+	} {
+		u, _ := url.Parse(in)
+		if got := publicOrigin(u); got != want {
+			t.Errorf("%s: %s, want %s", in, got, want)
+		}
+	}
+}
