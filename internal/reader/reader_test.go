@@ -263,7 +263,9 @@ func TestOIDC(t *testing.T) {
 			if r.StatusCode != tc.status {
 				t.Fatalf("callback: got %d want %d: %s", r.StatusCode, tc.status, body(t, r))
 			}
-			r.Body.Close()
+			if text := body(t, r); tc.status == 400 && (!strings.Contains(text, "Sign-in did not finish") || !strings.Contains(text, `href="/login"`)) {
+				t.Fatalf("failed sign-in page offers no way back: %s", text)
+			}
 			if tc.status == 303 {
 				if !f.p.pkce {
 					t.Fatal("PKCE not verified")
@@ -278,6 +280,11 @@ func TestOIDC(t *testing.T) {
 					if !strings.Contains(text, "No paper for you yet") || strings.Contains(text, "Archive") {
 						t.Fatal("unmapped reader has paper chrome")
 					}
+					if !strings.Contains(text, `action="/logout"`) || !strings.Contains(text, session.CSRF) {
+						t.Fatal("unmapped reader cannot sign out")
+					}
+				} else if r := f.get(t, "/e/1999-01-01"); r.StatusCode != 404 || !strings.Contains(body(t, r), "This page is not in the paper") {
+					t.Fatal("missing edition has no reader 404 page")
 				} else if !strings.Contains(text, "Your first paper arrives tomorrow morning") {
 					t.Fatal("missing first-edition message")
 				}
@@ -607,8 +614,9 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	// Raised to 162 KB for the paper switcher and per-paper push status.
 	// Raised to 166 KB for each story's reading-view link; the reading view's
 	// own CSS and script load only on its page.
-	if total >= 166000 {
-		t.Fatalf("first load exceeds 166 KB: %d", total)
+	// Raised to 167 KB for archive and search controls styled in every mode.
+	if total >= 167000 {
+		t.Fatalf("first load exceeds 167 KB: %d", total)
 	}
 }
 

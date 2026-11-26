@@ -32,6 +32,7 @@ import (
 type authView struct {
 	Page, Title, Error, Notice string
 	Form, CSRF, Next, Token    string
+	NextText                   string
 	Username                   string
 	Admin, Reset, Named        bool
 	Passkeys                   bool
