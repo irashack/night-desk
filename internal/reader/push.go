@@ -100,3 +100,21 @@ func (s *Server) pushStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"on": on})
 }
+
+// pushOpen is where a notification click lands (#34): the paper that most
+// recently announced an edition this reader has notifications on for, which
+// may be a group paper rather than the default one.
+func (s *Server) pushOpen(w http.ResponseWriter, r *http.Request) {
+	scope := current(r).scope
+	target := "/"
+	paper, ok, err := s.Store.LatestNotifiedPaper(r.Context(), scope)
+	if err != nil {
+		http.Error(w, "Reader unavailable", 500)
+		return
+	}
+	if papers := scope.Papers(); ok && len(papers) > 0 && paper != papers[0].Paper {
+		target = paperBase(paper) + "/"
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}

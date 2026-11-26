@@ -318,3 +318,39 @@ func TestReturnPath(t *testing.T) {
 		}
 	}
 }
+
+// A story notification opens the paper that announced the newest edition among
+// those the reader turned notifications on for, not always the default (#34).
+func TestNotificationOpensTheNotifiedPaper(t *testing.T) {
+	f := setup(t)
+	f.withShared(t)
+	f.p.groups = []string{"family"}
+	f.publish(t, f.a, "2026-11-19", sampleEdition(), nil)
+	r := f.signIn(t, "")
+	r.Body.Close()
+	session, _ := f.session(t)
+	sub := subscriptionJSON("https://push.example.com/one")
+	for _, path := range []string{"/push/subscribe", "/p/c/push/subscribe"} {
+		if code := f.pushPost(t, path, session.CSRF, sub); code != 204 {
+			t.Fatal("subscribe", path, code)
+		}
+	}
+	open := func() string {
+		t.Helper()
+		r := f.get(t, "/push/open")
+		r.Body.Close()
+		if r.StatusCode != 303 {
+			t.Fatal("open status", r.StatusCode)
+		}
+		return r.Header.Get("Location")
+	}
+	f.publish(t, paperScope(t, f.db, "c"), "2026-11-21", sampleEdition(), nil)
+	if got := open(); got != "/p/c/" {
+		t.Fatalf("group paper's notification opened %q", got)
+	}
+	time.Sleep(5 * time.Millisecond)
+	f.publish(t, f.a, "2026-11-22", sampleEdition(), nil)
+	if got := open(); got != "/" {
+		t.Fatalf("default paper's notification opened %q", got)
+	}
+}

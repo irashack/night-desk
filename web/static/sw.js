@@ -57,6 +57,11 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/img/')) {
     event.respondWith((async () => { const c = await caches.open(PAPER); return await c.match(req) || fetch(req); })()); return;
   }
+  // Offline, a notification click shows the saved default paper.
+  if (req.mode === 'navigate' && url.pathname === OPEN) {
+    event.respondWith(fetch(req).catch(async () => await (await caches.open(PAPER)).match('/') || fetch(req)));
+    return;
+  }
   if (req.mode !== 'navigate' || (url.pathname !== '/' && !/^\/e\/\d{4}-\d{2}-\d{2}$/.test(url.pathname))) return;
   const revision = generation;
   const network = fetch(req);
@@ -73,12 +78,15 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification('Night Desk', {body: "Today's paper is ready", icon: '/static/icon-192.png', tag: 'nd-edition'}));
 });
+// Pushes do not say which paper they are for, so a click goes through
+// /push/open, which redirects to the paper that announced the newest edition.
+const OPEN = '/push/open';
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil((async () => {
     const open = (await self.clients.matchAll({type: 'window'})).find((c) => new URL(c.url).origin === self.location.origin);
-    if (!open) return self.clients.openWindow('/');
+    if (!open) return self.clients.openWindow(OPEN);
     await open.focus();
-    if (new URL(open.url).pathname !== '/') await open.navigate('/');
+    await open.navigate(OPEN);
   })());
 });

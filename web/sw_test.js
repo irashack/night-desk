@@ -23,10 +23,11 @@ function harness() {
     async delete(name) { return stores.delete(name); },
   };
   let network = async () => { throw new Error('offline'); };
-  const context = vm.createContext({self: {location: {origin}, addEventListener(type, fn) { handlers[type] = fn; }, clients: {claim: async () => {}}, skipWaiting: async () => {}}, URL, Response, Request, caches, fetch: (...args) => network(...args)});
+  const windows = [], opened = [];
+  const context = vm.createContext({self: {location: {origin}, addEventListener(type, fn) { handlers[type] = fn; }, clients: {claim: async () => {}, matchAll: async () => windows, openWindow: async (path) => { opened.push(path); }}, skipWaiting: async () => {}}, URL, Response, Request, caches, fetch: (...args) => network(...args)});
   vm.runInContext(readFileSync(__dirname + '/static/sw.js', 'utf8'), context);
   return {
-    stores, caches,
+    stores, caches, windows, opened,
     setNetwork(fn) { network = fn; },
     async dispatch(type, data) {
       const pending = []; let response;
@@ -87,4 +88,17 @@ test('republishing a date prunes images no longer in the edition', async () => {
   assert.ok(await (await h.caches.open('nd-paper-v1')).match(old));
   h.setNetwork(async (req) => typeof req === 'string' ? new Response('asset') : new Response(html().replace(/<img[^>]+>/, ''))); await h.navigate('/');
   assert.equal(await (await h.caches.open('nd-paper-v1')).match(old), undefined);
+});
+
+test('a notification click opens the notified paper through /push/open', async () => {
+  const h = harness();
+  await h.dispatch('notificationclick', {notification: {close() {}}});
+  assert.deepEqual(h.opened, ['/push/open']);
+  const visited = [];
+  h.windows.push({url: origin + '/p/club/', focus: async () => {}, navigate: async (path) => { visited.push(path); }});
+  await h.dispatch('notificationclick', {notification: {close() {}}});
+  assert.deepEqual(visited, ['/push/open']);
+  h.setNetwork(async (req) => typeof req === 'string' ? new Response('asset') : documentResponse()); await h.navigate('/');
+  h.setNetwork(async () => { throw new Error('offline'); });
+  assert.match(await (await h.navigate('/push/open')).text(), /owner-a/);
 });
