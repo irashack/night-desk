@@ -81,3 +81,50 @@ func TestEventsPollingWithoutWebhook(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+// Repeating an identical PUT (a client retrying after a lost response) must not
+// announce the edition again; a changed edition still does (#30).
+func TestRepeatedIdenticalPublishIsIdempotent(t *testing.T) {
+	a := setup(t, nil)
+	ctx := context.Background()
+	published := func() []string {
+		t.Helper()
+		events, _, err := a.db.Events(ctx, a.scope, "", 500)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := []string{}
+		for _, e := range events {
+			if e.Type == webhook.EventEditionPublished {
+				ids = append(ids, e.ID)
+			}
+		}
+		return ids
+	}
+	body := fixture(t)
+	for range 2 {
+		if w := a.request("PUT", "/api/v1/editions/2026-10-30", body, a.key); w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	first, err := a.db.Edition(ctx, a.scope, "2026-10-30")
+	if err != nil || first == nil {
+		t.Fatal(err)
+	}
+	if got := published(); len(got) != 1 {
+		t.Fatalf("identical repeat emitted %d edition.published events, want 1", len(got))
+	}
+	var ed map[string]any
+	if err = json.Unmarshal([]byte(body), &ed); err != nil {
+		t.Fatal(err)
+	}
+	item := ed["sections"].([]any)[0].(map[string]any)["items"].([]any)[0].(map[string]any)
+	item["title"] = "A corrected headline"
+	raw, _ := json.Marshal(ed)
+	if w := a.request("PUT", "/api/v1/editions/2026-10-30", string(raw), a.key); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if got := published(); len(got) != 2 {
+		t.Fatalf("changed edition emitted %d edition.published events in total, want 2", len(got))
+	}
+}

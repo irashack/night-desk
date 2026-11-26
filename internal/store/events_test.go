@@ -59,7 +59,10 @@ func TestOutboxMutationEventsAndOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Legacy replacement and deadline publication use the same outbox helper.
-	if err = s.Publish(ctx, scope, date, eventEdition(), nil); err != nil {
+	// The replacement changes the edition: an identical repeat announces nothing.
+	replacement := eventEdition()
+	replacement.Sections[0].Items[0].Title = "Corrected title"
+	if err = s.Publish(ctx, scope, date, replacement, nil); err != nil {
 		t.Fatal(err)
 	}
 	rev, err = s.SubmitDraft(ctx, scope, "2026-10-31", "worker", eventEdition())
