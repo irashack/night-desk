@@ -202,3 +202,27 @@ func (s *Store) FinishPush(ctx context.Context, d PushDelivery, gone bool, retry
 	}
 	return err
 }
+
+// LatestNotifiedPaper is the paper, among those the session reads, whose
+// newest announced edition is the most recent for which the session's reader
+// has notifications on: where a notification click should lead. Pushes carry
+// no payload, so the click asks the server. ok is false when there is none.
+func (s *Store) LatestNotifiedPaper(ctx context.Context, scope auth.ReaderScope) (paper string, ok bool, err error) {
+	if _, err = scopeID(scope.PaperScope()); err != nil {
+		return "", false, err
+	}
+	session := scope.Session()
+	var best float64
+	for _, access := range scope.Papers() {
+		var at sql.NullFloat64
+		err = s.db.QueryRowContext(ctx, `SELECT max(julianday(e.created_at)) FROM push_editions e WHERE e.paper_id=?
+		 AND EXISTS(SELECT 1 FROM push_subscriptions s WHERE s.paper_id=e.paper_id AND s.reader_issuer=? AND s.reader_subject=?)`, access.Paper, session.Issuer, session.Subject).Scan(&at)
+		if err != nil {
+			return "", false, err
+		}
+		if at.Valid && (!ok || at.Float64 > best) {
+			paper, ok, best = access.Paper, true, at.Float64
+		}
+	}
+	return paper, ok, nil
+}

@@ -422,7 +422,9 @@ worker has no database and forgetting it on restart costs at most a few more tri
 
 **Web push without a payload.** The push says only that today's paper is ready, so
 nothing about the paper leaves the server and no message encryption is needed; the
-VAPID key pair comes from the standard library.
+VAPID key pair comes from the standard library. A click therefore asks the server
+where to go: `/push/open` redirects to the paper whose newest announced edition is
+the most recent among those the reader has notifications on for.
 
 **Modules, each with a reason.** `coreos/go-oidc` and `golang.org/x/oauth2`
 (OIDC sign-in), `golang.org/x/crypto` (argon2id) and `go-webauthn/webauthn`

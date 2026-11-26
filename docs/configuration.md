@@ -315,8 +315,10 @@ is re-read whenever the header changes rather than only at sign-in.
   keeps getting the empty "paper is ready" push until the group reader is removed
   from the configuration or the device unsubscribes; opening it asks for sign-in.
 - The agent API is unchanged: a shared paper has its own agent key like any other.
-- Only the default paper (at `/`) is saved for offline reading, and a
-  notification opens `/`; the other papers need a connection and the switcher.
+- Only the default paper (at `/`) is saved for offline reading. A notification
+  opens the paper that announced the newest edition among those the reader turned
+  notifications on for (through `/push/open`); offline it shows the saved default
+  paper, and the other papers need a connection.
 
 Health checks use `GET /healthz`. SIGTERM allows ten seconds for requests to
 finish. Backups require a fresh destination outside the data directory and include

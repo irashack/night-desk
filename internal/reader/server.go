@@ -225,6 +225,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /sections", s.protect(http.HandlerFunc(s.editSections), false))
 	mux.Handle("GET /img/{image}", s.protect(http.HandlerFunc(s.image), false))
 	mux.Handle("POST /feedback", s.protect(http.HandlerFunc(s.feedback), false))
+	mux.Handle("GET /push/open", s.protect(http.HandlerFunc(s.pushOpen), false))
 	mux.Handle("POST /push/subscribe", s.protect(http.HandlerFunc(s.pushSubscribe), false))
 	mux.Handle("POST /push/unsubscribe", s.protect(http.HandlerFunc(s.pushUnsubscribe), false))
 	mux.Handle("GET /manifest.webmanifest", s.protect(http.HandlerFunc(s.manifest), false))
