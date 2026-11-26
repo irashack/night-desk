@@ -123,15 +123,15 @@ func standalone(args []string, out, errOut io.Writer) int {
 	} else {
 		fmt.Fprintln(out, "Created config.yaml, nightdesk.db, agent.key and vapid.key.")
 	}
-	switch *mode {
+	switch o.mode {
 	case config.AuthOIDC:
 		fmt.Fprintln(out, "Edit the OIDC placeholders and add your reader identity before serving.")
 	case config.AuthProxy:
 		fmt.Fprintln(out, "Set server.auth.proxy.trusted_proxies to your proxy's address and add your readers before serving.")
 	case config.AuthLocal:
-		fmt.Fprintln(out, "Serve it, then open "+strings.TrimRight(*publicURL, "/")+"/setup with the setup code from the log to create your account.")
+		fmt.Fprintln(out, "Serve it, then open "+strings.TrimRight(o.publicURL, "/")+"/setup with the setup code from the log to create your account.")
 	case config.AuthNone:
-		fmt.Fprintln(out, "Serve it and open "+*publicURL+". There is no sign-in: keep it on a private network.")
+		fmt.Fprintln(out, "Serve it and open "+o.publicURL+". There is no sign-in: keep it on a private network.")
 	}
 	return 0
 }
@@ -335,7 +335,12 @@ func initialize(dir string, o initOptions) error {
 	case config.AuthLocal:
 		c.Server.Auth.Local.Passkeys = true
 	case config.AuthNone:
-		// A container's 0.0.0.0 is checked when serving, not here.
+		// Every address only where all of this machine's are private (a
+		// container's usually are), so a published port reaches it; else
+		// loopback, which config.Validate accepts anywhere.
+		if !config.PublicListen(c.Server.Listen) {
+			break
+		}
 		c.Server.Listen = "127.0.0.1:8080"
 	}
 	if err := c.Validate(); err != nil {

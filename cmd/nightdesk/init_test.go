@@ -65,6 +65,23 @@ func TestInitAuthModes(t *testing.T) {
 			}
 		})
 	}
+	// No sign-in listens on every address only where that is private (a
+	// container), so a published port reaches it; elsewhere on loopback.
+	dir := t.TempDir()
+	if code := run([]string{"init", "--dir", dir, "--auth", "none"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatal("init --auth none failed")
+	}
+	c, err := config.Load(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "0.0.0.0:8080"
+	if config.PublicListen(want) {
+		want = "127.0.0.1:8080"
+	}
+	if c.Server.Listen != want {
+		t.Fatalf("listen %s, want %s", c.Server.Listen, want)
+	}
 	if code := run([]string{"init", "--dir", t.TempDir(), "--auth", "magic"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 1 {
 		t.Fatal("init accepted an unknown sign-in mode")
 	}
@@ -127,18 +144,18 @@ func TestInitInteractive(t *testing.T) {
 	t.Cleanup(func() { stdin = saved })
 	// Answers in order; an empty line keeps the default, a bad one asks again.
 	stdin = strings.NewReader(strings.Join([]string{
-		"The Harbour Gazette", // masthead
-		"Mars/Olympus",        // timezone: refused
-		"Australia/Sydney",    // timezone
-		"Sydney",              // place
-		"",                    // coordinates
-		"en-AU",               // locale
-		"",                    // units: metric, from en-AU
-		"6am",                 // deadline: refused
-		"06:00",               // deadline
-		"News, Sport",         // sections
-		"",                    // sign-in: local
-		"",                    // public URL
+		"The Harbour Gazette",     // masthead
+		"Mars/Olympus",            // timezone: refused
+		"Australia/Sydney",        // timezone
+		"Sydney",                  // place
+		"",                        // coordinates
+		"en-AU",                   // locale
+		"",                        // units: metric, from en-AU
+		"6am",                     // deadline: refused
+		"06:00",                   // deadline
+		"News, Sport",             // sections
+		"",                        // sign-in: local
+		"https://gazette.example", // public URL
 	}, "\n") + "\n")
 	dir := t.TempDir()
 	var out, errOut bytes.Buffer
@@ -147,6 +164,10 @@ func TestInitInteractive(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "an IANA timezone") || !strings.Contains(out.String(), "a time such as 06:30") {
 		t.Fatalf("no correction prompts: %s", out.String())
+	}
+	// The closing instructions use the answers, not the flags' defaults.
+	if !strings.Contains(out.String(), "open https://gazette.example/setup") {
+		t.Fatalf("instructions ignore the answered address: %s", out.String())
 	}
 	c, err := config.Load(filepath.Join(dir, "config.yaml"))
 	if err != nil {

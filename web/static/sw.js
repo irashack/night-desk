@@ -67,7 +67,9 @@ self.addEventListener('fetch', (event) => {
   const network = fetch(req);
   event.waitUntil(network.then((res) => { const copy = res.clone(); return serial(async () => {
     if (url.pathname === '/') await saveLatest(copy, revision);
-    else if (!res.ok || res.redirected) await clearPaper();
+    // A refusal or redirect may mean access ended (an unmapped reader gets
+    // 404); a server error says nothing about it, so the saved copy stays.
+    else if (res.redirected || (!res.ok && res.status < 500)) await clearPaper();
   }); }).catch(() => {}));
   event.respondWith(network.catch(async () => {
     const cached = await (await caches.open(PAPER)).match(url.pathname);

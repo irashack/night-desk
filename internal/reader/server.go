@@ -523,7 +523,7 @@ var signIn = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta n
 	`<link rel="stylesheet" href="` + asset("signin.css") + `"></head>` +
 	`<body data-logout="true"><main><h1><img src="/static/signin-art.png" width="640" height="420" alt="Night Desk"></h1>` +
 	`<p class="tag">Your paper, set overnight.</p><a href="/login">Sign in to Night Desk <span aria-hidden="true">→</span></a>` +
-	`<p class="note">You will continue to your sign-in page and come straight back.</p></main><script defer src="/static/app.js"></script></body></html>`
+	`<p class="note">You will continue to your sign-in page and come straight back.</p></main><script defer src="` + asset("app.js") + `"></script></body></html>`
 
 func validCSRF(r *http.Request) bool {
 	return equal(current(r).scope.Session().CSRF, r.PostForm.Get("csrf"))

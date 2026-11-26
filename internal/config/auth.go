@@ -196,6 +196,9 @@ func (c *Config) checkAuth(add func(string, string)) {
 	}
 }
 
+// PublicListen reports whether listen may be reachable from a public address.
+func PublicListen(listen string) bool { return publicListen(listen) != "" }
+
 func isZeroProxy(p ProxyAuth) bool {
 	return p.UserHeader == "" && p.GroupsHeader == "" && len(p.TrustedProxies) == 0
 }

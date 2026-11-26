@@ -6,8 +6,8 @@ release and must be named in its release notes. Compatibility fixtures built fro
 existing databases, and restore tests, enforce this promise.
 Edition schema v1 remains accepted alongside v2 permanently.
 
-Database migrations are embedded and **forward-only**. `serve`, `migrate`, `key`
-and `backup` open the database and apply pending migrations. `check` validates
+Database migrations are embedded and **forward-only**. `serve`, `migrate`, `key`,
+`backup`, `accounts` and `quality` open the database and apply pending migrations. `check` validates
 configuration without opening the database; it does not prove that an older
 binary can use a database migrated by a newer one.
 
