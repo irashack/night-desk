@@ -171,12 +171,15 @@ EDIT_SCHEMA = _schema(
     "whole ordered list (1-16 of key, title, required, optional brief; keep existing keys for "
     "unchanged sections), boxes merges field by field (weather, sun, solunar, markets), null "
     "clears an optional field. Plain text only, no HTML or Markdown links. Saved as a new "
-    "revision and effective at once; on 422 correct errors[].path and rule and retry.",
+    "revision and effective at once; on 422 correct errors[].path and rule and retry. Include "
+    "expected_revision (the revision nightdesk_paper returned) when your change depends on "
+    "what you read; a 409 means the paper changed since, so read it again and redo the change.",
     {"changes": {"type": "object", "description": "Merge patch of editable paper fields.",
                  "properties": {"masthead": {"type": "string"}, "place": {"type": ["string", "null"]},
                                 "brief": {"type": ["string", "null"]}, "deadline": {"type": ["string", "null"]},
                                 "motto": {"type": ["object", "null"]}, "sections": {"type": "array", "items": {"type": "object"}},
-                                "boxes": {"type": "object"}}}},
+                                "boxes": {"type": "object"},
+                                "expected_revision": {"type": "integer", "minimum": 0}}}},
     ("changes",))
 REVISIONS_SCHEMA = _schema(
     "nightdesk_paper_revisions",

@@ -464,7 +464,9 @@ Without JavaScript the complete edition remains
 readable as a list. Sections (`/sections`) lets a paper's readers add, rename,
 reorder and remove its sections and edit their one-line briefs, each change saved as
 an editorial revision like an agent's `PATCH /api/v1/paper`; new sections find their
-own sources on the next run. Install through your browser's normal PWA controls. The latest
+own sources on the next run. If the sections changed after the page was opened (by
+the paper's agent or another reader), a change is refused with a note and the page
+shows the sections as they now stand, rather than overwriting the other edit. Install through your browser's normal PWA controls. The latest
 edition and its images are saved for offline reading. A front page left open
 or resumed from the background checks for a newer edition when it returns to
 view and reloads to it; when the server cannot be reached it says it is showing

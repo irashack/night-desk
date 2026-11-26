@@ -27,17 +27,20 @@ type Route struct {
 	Request, Response reflect.Type
 	PathParams, Query reflect.Type
 	Editorial         bool
-	Handler           func(*Server, http.ResponseWriter, *http.Request)
+	// ETag marks the paper routes: a success carries the paper's editorial
+	// revision as an ETag, and writes accept it back as If-Match.
+	ETag    bool
+	Handler func(*Server, http.ResponseWriter, *http.Request)
 }
 
 // Routes returns a fresh copy of the complete agent contract, including optional
 // editorial endpoints. Those endpoints are served when Server.Editorial is set.
 func Routes() []Route {
 	return []Route{
-		{Method: "GET", Path: "/api/v1/paper", Tool: "get_paper", Summary: "Read the effective paper and reader guidance", Capability: auth.Read, Response: reflect.TypeFor[paperView](), Handler: (*Server).paper},
-		{Method: "PATCH", Path: "/api/v1/paper", Tool: "edit_paper", Summary: "Merge editorial fields into the paper and save a revision", Capability: auth.Edit, Request: reflect.TypeFor[paperPatch](), Response: reflect.TypeFor[paperView](), Editorial: true, Handler: (*Server).editPaper},
+		{Method: "GET", Path: "/api/v1/paper", Tool: "get_paper", Summary: "Read the effective paper and reader guidance", Capability: auth.Read, Response: reflect.TypeFor[paperView](), ETag: true, Handler: (*Server).paper},
+		{Method: "PATCH", Path: "/api/v1/paper", Tool: "edit_paper", Summary: "Merge editorial fields into the paper and save a revision", Capability: auth.Edit, Request: reflect.TypeFor[paperPatch](), Response: reflect.TypeFor[paperView](), Editorial: true, ETag: true, Handler: (*Server).editPaper},
 		{Method: "GET", Path: "/api/v1/paper/revisions", Tool: "paper_revisions", Summary: "List retained editorial revisions, newest first", Capability: auth.Read, Query: reflect.TypeFor[revisionQuery](), Response: reflect.TypeFor[revisionsResponse](), Editorial: true, Handler: (*Server).paperRevisions},
-		{Method: "POST", Path: "/api/v1/paper/restore", Tool: "restore_paper", Summary: "Restore a revision, or 0 for the declaration, as a new revision", Capability: auth.Edit, Request: reflect.TypeFor[restoreRequest](), Response: reflect.TypeFor[paperView](), Editorial: true, Handler: (*Server).restorePaper},
+		{Method: "POST", Path: "/api/v1/paper/restore", Tool: "restore_paper", Summary: "Restore a revision, or 0 for the declaration, as a new revision", Capability: auth.Edit, Request: reflect.TypeFor[restoreRequest](), Response: reflect.TypeFor[paperView](), Editorial: true, ETag: true, Handler: (*Server).restorePaper},
 		{Method: "GET", Path: "/api/v1/feedback", Tool: "get_feedback", Summary: "Read reader feedback after an exclusive cursor", Capability: auth.Read, Query: reflect.TypeFor[feedbackQuery](), Response: reflect.TypeFor[feedbackResponse](), Handler: (*Server).feedback},
 		{Method: "GET", Path: "/api/v1/editions", Tool: "list_editions", Summary: "List published editions, newest first", Capability: auth.Read, Query: reflect.TypeFor[editionsQuery](), Response: reflect.TypeFor[editionsResponse](), Handler: (*Server).editions},
 		{Method: "GET", Path: "/api/v1/editions/{date}", Tool: "get_edition", Summary: "Read a published edition with its publication timestamp", Capability: auth.Read, PathParams: reflect.TypeFor[datePath](), Response: reflect.TypeFor[publishedEdition](), Handler: (*Server).readEdition},
@@ -85,14 +88,17 @@ type candidatesQuery struct {
 
 // Pointers make merge-patch fields optional; nullable marks only fields the
 // handler permits clearing. Boxes merge field by field, sections replace all.
+// ExpectedRevision is not a paper field: like If-Match, it names the revision
+// the edit was computed from, and a stale one is refused with 409.
 type paperPatch struct {
-	Masthead *string           `json:"masthead,omitempty" nullable:"false"`
-	Place    *string           `json:"place,omitempty" nullable:"true"`
-	Brief    *string           `json:"brief,omitempty" nullable:"true"`
-	Deadline *string           `json:"deadline,omitempty" nullable:"true"`
-	Motto    *config.Motto     `json:"motto,omitempty" nullable:"true"`
-	Sections *[]config.Section `json:"sections,omitempty" nullable:"false"`
-	Boxes    *boxesPatch       `json:"boxes,omitempty" nullable:"false"`
+	ExpectedRevision *int64            `json:"expected_revision,omitempty" minimum:"0" nullable:"false"`
+	Masthead         *string           `json:"masthead,omitempty" nullable:"false"`
+	Place            *string           `json:"place,omitempty" nullable:"true"`
+	Brief            *string           `json:"brief,omitempty" nullable:"true"`
+	Deadline         *string           `json:"deadline,omitempty" nullable:"true"`
+	Motto            *config.Motto     `json:"motto,omitempty" nullable:"true"`
+	Sections         *[]config.Section `json:"sections,omitempty" nullable:"false"`
+	Boxes            *boxesPatch       `json:"boxes,omitempty" nullable:"false"`
 }
 type boxesPatch struct {
 	Weather *bool `json:"weather,omitempty" nullable:"false"`
@@ -101,7 +107,8 @@ type boxesPatch struct {
 	Markets *bool `json:"markets,omitempty" nullable:"false"`
 }
 type restoreRequest struct {
-	Revision *int64 `json:"revision" minimum:"0" nullable:"false"`
+	Revision         *int64 `json:"revision" minimum:"0" nullable:"false"`
+	ExpectedRevision *int64 `json:"expected_revision,omitempty" minimum:"0" nullable:"false"`
 }
 type revisionsResponse struct {
 	Revisions []store.EditorialRevision `json:"revisions" nullable:"false"`

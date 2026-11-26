@@ -1,11 +1,14 @@
 package reader
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/irashack/night-desk/internal/config"
+	"github.com/irashack/night-desk/internal/editorial"
 )
 
 // sectionRow is one section as the Sections page shows and edits it.
@@ -18,18 +21,27 @@ type sectionRow struct {
 // typed is reflected through the query string.
 var sectionNotices = map[string]string{"added": "Section added", "saved": "Section saved", "moved": "Section moved", "removed": "Section removed"}
 
+// staleSections explains a refused edit computed from an older revision.
+const staleSections = "The sections changed since you opened this page, so your change was not saved. They are shown below as they stand now; make your change again if you still want it."
+
 func (s *Server) sections(w http.ResponseWriter, r *http.Request) {
 	if s.Editorial == nil || !current(r).scope.CanEdit() {
 		s.notFound(w, r)
 		return
 	}
-	v := s.sectionsView(r, current(r).paper.Sections)
+	paper, rev, ok := s.Editorial.Current(current(r).paper.ID)
+	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	v := s.sectionsView(r, paper.Sections, rev)
 	v.Message = sectionNotices[r.URL.Query().Get("done")]
 	s.render(w, "sections", v)
 }
 
-func (s *Server) sectionsView(r *http.Request, sections []config.Section) view {
+func (s *Server) sectionsView(r *http.Request, sections []config.Section, revision int64) view {
 	v := s.base(r)
+	v.Revision = revision
 	for i, sec := range sections {
 		row := sectionRow{Key: sec.Key, Title: sec.Title, First: i == 0, Last: i == len(sections)-1}
 		if sec.Brief != nil {
@@ -58,12 +70,42 @@ func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := current(r)
-	// The principal's paper is effective as of authentication; edits build on it.
-	ed := p.paper.Editorial()
-	sections := append([]config.Section(nil), ed.Sections...)
 	form := r.PostForm
 	action, key := form.Get("action"), form.Get("key")
 	title, brief := strings.TrimSpace(form.Get("title")), strings.TrimSpace(form.Get("brief"))
+	// The page posts the revision it showed; a page from before revisions were
+	// posted saves against whatever is current, as before.
+	expected := editorial.AnyRevision
+	if raw := form.Get("revision"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			http.Error(w, "Invalid form", 400)
+			return
+		}
+		expected = n
+	}
+	// Edits build on the newest revision, never the paper as of authentication,
+	// and are saved only if that revision is still current.
+	paper, rev, ok := s.Editorial.Current(p.paper.ID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	stale := func() {
+		paper, rev, _ := s.Editorial.Current(p.paper.ID)
+		v := s.sectionsView(r, paper.Sections, rev)
+		v.Problems = []string{staleSections}
+		if action == "add" {
+			v.AddTitle, v.AddBrief = title, brief
+		}
+		s.renderStatus(w, http.StatusConflict, "sections", v)
+	}
+	if expected != editorial.AnyRevision && expected != rev {
+		stale()
+		return
+	}
+	ed := paper.Editorial()
+	sections := append([]config.Section(nil), ed.Sections...)
 	at := -1
 	for i, sec := range sections {
 		if sec.Key == key {
@@ -71,7 +113,7 @@ func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if action != "add" && at < 0 {
-		v := s.sectionsView(r, sections)
+		v := s.sectionsView(r, sections, rev)
 		v.Problems = []string{"sections: that section is no longer in the paper; reload the page"}
 		s.renderStatus(w, http.StatusConflict, "sections", v)
 		return
@@ -98,7 +140,7 @@ func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
 		done = "moved"
 	case "remove":
 		if form.Get("confirm") != "1" {
-			v := s.sectionsView(r, sections)
+			v := s.sectionsView(r, sections, rev)
 			v.Confirm = &v.Rows[at]
 			s.render(w, "sections", v)
 			return
@@ -110,14 +152,18 @@ func (s *Server) editSections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ed.Sections = sections
-	_, problems, err := s.Editorial.Save(r.Context(), p.scope.PaperScope(), ed)
+	_, problems, err := s.Editorial.Save(r.Context(), p.scope.PaperScope(), ed, rev)
+	if errors.Is(err, editorial.ErrConflict) {
+		stale()
+		return
+	}
 	if err != nil {
 		http.Error(w, "Reader unavailable", 500)
 		return
 	}
 	if len(problems) > 0 {
 		// Show the paper as it stands, with the reader's input kept in place.
-		v := s.sectionsView(r, p.paper.Sections)
+		v := s.sectionsView(r, paper.Sections, rev)
 		v.Problems = problems
 		switch action {
 		case "add":

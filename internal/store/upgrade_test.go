@@ -191,7 +191,7 @@ func TestUpgradePrereleaseSchema(t *testing.T) {
 	if err != nil || next != 20 || len(events) != 1 || events[0].ID != 20 {
 		t.Fatalf("continued cursor: %+v %d %v", events, next, err)
 	}
-	if rev, err := desk.Restore(ctx, scopes["a"], 1); err != nil || rev != 3 {
+	if rev, err := desk.Restore(ctx, scopes["a"], 1, editorial.AnyRevision); err != nil || rev != 3 {
 		t.Fatalf("restore old revision: %d %v", rev, err)
 	}
 	again, err := editorial.Open(ctx, db, func() *config.Config { return cfg }, nil)
@@ -201,7 +201,7 @@ func TestUpgradePrereleaseSchema(t *testing.T) {
 	if p, _ := again.Config().Paper("a"); p.Masthead != "Archive A" || len(p.Sections) != 2 {
 		t.Fatalf("restored revision: %+v", p)
 	}
-	if _, err := desk.Restore(ctx, scopes["b"], 0); err != nil {
+	if _, err := desk.Restore(ctx, scopes["b"], 0, editorial.AnyRevision); err != nil {
 		t.Fatal(err)
 	}
 	if p, _ := desk.Config().Paper("b"); p.Masthead != "Declared b" {

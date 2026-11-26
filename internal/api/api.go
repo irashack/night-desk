@@ -142,7 +142,20 @@ type principal struct {
 func current(r *http.Request) principal { return r.Context().Value(principalKey{}).(principal) }
 func (s *Server) paper(w http.ResponseWriter, r *http.Request) {
 	p := current(r)
-	v := s.paperView(p.paper)
+	var v paperView
+	if s.Editorial == nil {
+		v = s.paperView(p.paper)
+	} else {
+		// Read the paper and its revision together, so the revision and ETag
+		// name exactly the revision these fields come from.
+		paper, rev, ok := s.Editorial.Current(p.scope.PaperID())
+		if !ok {
+			fail(w, 401, "unauthorized")
+			return
+		}
+		p.paper, v = paper, s.paperViewAt(paper, rev)
+		setETag(w, rev)
+	}
 	urls, err := s.Store.RecentCandidateURLs(r.Context(), p.scope, time.Now().AddDate(0, 0, -7))
 	if err != nil {
 		s.storageFailed(w)
@@ -198,6 +211,13 @@ type paperView struct {
 	Revision         *int64    `json:"revision,omitempty"`
 	Edited           *bool     `json:"edited,omitempty"`
 	RevisionProblems []problem `json:"revision_problems,omitempty"`
+}
+
+// paperViewAt is paperView for a paper read at a known editorial revision.
+func (s *Server) paperViewAt(p config.Paper, revision int64) paperView {
+	v := s.paperView(p)
+	v.Revision = &revision
+	return v
 }
 
 func (s *Server) paperView(p config.Paper) paperView {

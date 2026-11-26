@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -138,5 +139,65 @@ func TestPaperEditsAreValidated(t *testing.T) {
 	}
 	if w := a.request("PATCH", "/api/v1/paper", `{}`, ""); w.Code != 401 {
 		t.Fatalf("unauthenticated edit: %d", w.Code)
+	}
+}
+
+// TestPaperEditsDoNotLoseUpdates reproduces issue #32: two edits computed from
+// the same paper revision must not silently overwrite one another.
+func TestPaperEditsDoNotLoseUpdates(t *testing.T) {
+	a, desk := setupEditorial(t)
+	stale := desk.Config() // the effective paper as a slow request authenticated it
+
+	w := a.request("GET", "/api/v1/paper", "", a.key)
+	if w.Code != 200 || w.Header().Get("ETag") != `"0"` {
+		t.Fatalf("GET paper: %d ETag %q", w.Code, w.Header().Get("ETag"))
+	}
+	ifMatch := func(body, tag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("PATCH", "/api/v1/paper", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+a.key)
+		r.Header.Set("If-Match", tag)
+		w := httptest.NewRecorder()
+		a.handler.ServeHTTP(w, r)
+		return w
+	}
+	// The reader and the agent both read revision 0; the first save wins.
+	if w := ifMatch(`{"brief":"Prefer local reporting."}`, `"0"`); w.Code != 200 || w.Header().Get("ETag") != `"1"` {
+		t.Fatalf("first edit: %d %s ETag %q", w.Code, w.Body, w.Header().Get("ETag"))
+	}
+	if w := ifMatch(`{"masthead":"The Evening"}`, `"0"`); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "revision") {
+		t.Fatalf("stale If-Match: %d %s", w.Code, w.Body)
+	}
+	p := a.paper(t, "GET", "/api/v1/paper", "", 200)
+	if p.Revision != 1 || p.Brief == nil || *p.Brief != "Prefer local reporting." || p.Masthead != "The Daily" {
+		t.Fatalf("first edit lost or stale edit applied: %+v", p)
+	}
+	// MCP tools send no headers: the body's expected_revision does the same.
+	a.paper(t, "PATCH", "/api/v1/paper", `{"expected_revision":0,"masthead":"The Evening"}`, http.StatusConflict)
+	if p := a.paper(t, "PATCH", "/api/v1/paper", `{"expected_revision":1,"masthead":"The Evening"}`, 200); p.Revision != 2 || p.Masthead != "The Evening" || p.Brief == nil {
+		t.Fatalf("current expected_revision: %+v", p)
+	}
+	if w := ifMatch(`{"masthead":"The Night"}`, `*`); w.Code != 200 {
+		t.Fatalf("If-Match *: %d %s", w.Code, w.Body)
+	}
+	if w := ifMatch(`{"masthead":"The Night"}`, `"x"`); w.Code != 400 {
+		t.Fatalf("malformed If-Match: %d %s", w.Code, w.Body)
+	}
+	if w := a.request("POST", "/api/v1/paper/restore", `{"revision":1,"expected_revision":1}`, a.key); w.Code != http.StatusConflict {
+		t.Fatalf("stale restore: %d %s", w.Code, w.Body)
+	}
+
+	// A client sending no precondition still never builds on a stale snapshot:
+	// a request authenticated before the edits above merges onto the newest revision.
+	slow := (&api.Server{Store: a.db, Config: func() *config.Config { return stale }, Editorial: desk}).Handler()
+	r := httptest.NewRequest("PATCH", "/api/v1/paper", strings.NewReader(`{"boxes":{"sun":true}}`))
+	r.Header.Set("Authorization", "Bearer "+a.key)
+	w = httptest.NewRecorder()
+	slow.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("unconditional edit: %d %s", w.Code, w.Body)
+	}
+	p = a.paper(t, "GET", "/api/v1/paper", "", 200)
+	if p.Revision != 4 || p.Masthead != "The Night" || p.Brief == nil || !p.Boxes.Sun {
+		t.Fatalf("unconditional edit dropped earlier changes: %+v", p)
 	}
 }
