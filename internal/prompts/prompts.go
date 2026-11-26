@@ -109,8 +109,11 @@ func defaultPrompt(name string) (Prompt, error) {
 		return Prompt{}, fmt.Errorf("default prompt %s: %w", name, err)
 	}
 	version := name + "-v1"
-	if name == DraftEdition {
+	switch name {
+	case DraftEdition:
 		version = name + "-v3"
+	case SectionFit:
+		version = name + "-v2"
 	}
 	return Prompt{Name: name, Version: version, Text: string(body)}, nil
 }
