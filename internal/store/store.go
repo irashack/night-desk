@@ -230,12 +230,15 @@ func (s *Store) EditionImages(ctx context.Context, scope auth.PaperScope, date s
 }
 
 type Feedback struct {
-	ID            int64  `json:"id"`
-	Date          string `json:"date"`
-	ItemID        string `json:"item_id"`
-	Kind          string `json:"kind"`
-	ReaderIssuer  string `json:"reader_issuer"`
-	ReaderSubject string `json:"reader_subject"`
+	ID     int64  `json:"id"`
+	Date   string `json:"date"`
+	ItemID string `json:"item_id"`
+	Kind   string `json:"kind"`
+	// ReaderID is an opaque, stable per-paper id for the reader. The issuer and
+	// subject are only for recording feedback and are never served (#33).
+	ReaderID      string `json:"reader_id"`
+	ReaderIssuer  string `json:"-"`
+	ReaderSubject string `json:"-"`
 	At            string `json:"at"`
 }
 
@@ -267,6 +270,10 @@ func (s *Store) Feedback(ctx context.Context, scope auth.PaperScope, after int64
 	if after < 0 || limit < 1 || limit > 500 {
 		return nil, after, errors.New("invalid cursor or limit")
 	}
+	key, e := s.readerIDKey(ctx)
+	if e != nil {
+		return nil, after, e
+	}
 	rows, e := s.db.QueryContext(ctx, "SELECT id,date,item_id,kind,reader_issuer,reader_subject,at FROM feedback WHERE paper_id=? AND id>? ORDER BY id LIMIT ?", paper, after, limit)
 	if e != nil {
 		return nil, after, e
@@ -278,6 +285,8 @@ func (s *Store) Feedback(ctx context.Context, scope auth.PaperScope, after int64
 		if e = rows.Scan(&f.ID, &f.Date, &f.ItemID, &f.Kind, &f.ReaderIssuer, &f.ReaderSubject, &f.At); e != nil {
 			return nil, after, e
 		}
+		f.ReaderID = readerID(key, paper, f.ReaderIssuer, f.ReaderSubject)
+		f.ReaderIssuer, f.ReaderSubject = "", ""
 		result = append(result, f)
 		after = f.ID
 	}

@@ -29,7 +29,8 @@ can change the paper's guidance and sections, overwrite reader notes and publish
 or replace editions. For an assistant that only browses the paper, issue a `read`
 key (`nightdesk key issue daily --capabilities read`). A `read` key still sees
 everything the paper holds for its agent: editions, gathered article text, reader
-feedback events with each reader's issuer and subject, and reader notes. Whatever
+feedback events (with an opaque per-paper `reader_id`, never the reader's sign-in
+issuer or subject), and reader notes. Whatever
 a connected assistant reads goes to that assistant's model provider under its own
 terms.
 

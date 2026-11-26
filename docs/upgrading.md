@@ -33,6 +33,17 @@ a migration. Changes made since the snapshot are absent after rollback.
 
 ## Release notes that need action
 
+### 0.9: feedback names readers by an opaque id
+
+`GET /api/v1/feedback` (MCP `get_feedback`) no longer returns `reader_issuer`
+and `reader_subject`: any `read` key could see readers' sign-in identities, which
+the agent API must never serve. Each event now carries `reader_id`, an opaque id
+that is stable for one reader of one paper, differs between papers and cannot be
+turned back into the identity. This is a deliberate exception to the upgrade
+promise, made for privacy. If your agent grouped feedback by issuer and subject,
+group it by `reader_id` instead. Migration `024_reader_ids` stores the random key
+behind the ids in the database, so restoring a backup keeps them stable.
+
 ### 0.4: reader sign-in modes
 
 Nothing changes for an existing installation. A configuration with `server.oidc`

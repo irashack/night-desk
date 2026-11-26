@@ -4090,10 +4090,7 @@
                           "kind": {
                             "type": "string"
                           },
-                          "reader_issuer": {
-                            "type": "string"
-                          },
-                          "reader_subject": {
+                          "reader_id": {
                             "type": "string"
                           }
                         },
@@ -4102,8 +4099,7 @@
                           "date",
                           "item_id",
                           "kind",
-                          "reader_issuer",
-                          "reader_subject",
+                          "reader_id",
                           "at"
                         ],
                         "type": "object"

@@ -347,3 +347,42 @@ func TestRoutingNoAuthDetail(t *testing.T) {
 		}
 	}
 }
+
+// Agent keys must never see a reader's identity provider issuer or subject
+// (#33). Feedback carries a stable, opaque per-paper reader id instead.
+func TestFeedbackHidesReaderIdentity(t *testing.T) {
+	a := setup(t, nil)
+	ctx := context.Background()
+	for _, subject := range []string{"alice-subject", "bob-subject", "alice-subject"} {
+		if e := a.db.AddFeedback(ctx, a.scope, store.Feedback{Date: "2026-10-27", ItemID: "economy-1", Kind: "up", ReaderIssuer: "https://issuer.example", ReaderSubject: subject}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	w := a.request("GET", "/api/v1/feedback", "", a.key)
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatal(w.Code, body)
+	}
+	for _, leak := range []string{"issuer.example", "alice-subject", "bob-subject", "reader_issuer", "reader_subject"} {
+		if strings.Contains(body, leak) {
+			t.Fatalf("feedback exposes %q: %s", leak, body)
+		}
+	}
+	var result struct {
+		Events []map[string]any `json:"events"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &result); e != nil || len(result.Events) != 3 {
+		t.Fatal(e, body)
+	}
+	ids := []string{}
+	for _, ev := range result.Events {
+		id, _ := ev["reader_id"].(string)
+		if id == "" {
+			t.Fatalf("event without reader_id: %s", body)
+		}
+		ids = append(ids, id)
+	}
+	if ids[0] != ids[2] || ids[0] == ids[1] {
+		t.Fatalf("reader ids must be stable per reader and distinct between readers: %v", ids)
+	}
+}

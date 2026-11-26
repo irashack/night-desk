@@ -374,8 +374,8 @@ func TestReaderHTTPIsolationAndRendering(t *testing.T) {
 		t.Fatal("feedback state did not survive reload")
 	}
 	events, _, err := f.db.Feedback(context.Background(), f.a, 0, 100)
-	if err != nil || len(events) != 4 || events[0].ReaderSubject != "reader-a" {
-		t.Fatal("feedback identity not recorded")
+	if err != nil || len(events) != 4 || events[0].ReaderID == "" || events[3].ReaderID != events[0].ReaderID || events[0].ReaderSubject != "" {
+		t.Fatal("feedback must carry one opaque reader id, never the subject", events, err)
 	}
 	r = f.get(t, "/archive")
 	html = body(t, r)
