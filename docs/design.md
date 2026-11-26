@@ -449,7 +449,9 @@ These are contracts; changing one is a breaking change.
    edition. A publish with warnings succeeds and returns them.
 3. **Text is plain text.** No Markdown or HTML in any field; nothing to sanitize.
 4. **Publishing is idempotent.** `PUT /api/v1/editions/{date}` replaces that date's
-   edition, so a retry is safe.
+   edition, so a retry is safe. Repeating an identical publication changes nothing:
+   the publication time stays, and no second notification or `edition.published`
+   event goes out.
 5. **Readers are (issuer, subject),** never email.
 6. **Tenant isolation is in the data layer.**
 7. **Migrations are embedded and forward-only.**

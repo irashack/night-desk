@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/edition"
+	"github.com/irashack/night-desk/internal/lean"
 	"github.com/irashack/night-desk/internal/webhook"
 	_ "modernc.org/sqlite"
 )
@@ -166,6 +168,20 @@ func publishTx(ctx context.Context, tx *sql.Tx, eventPaper config.Paper, date st
 		}
 		rawLayout = string(raw)
 	}
+	// An identical repeat (a client retrying after a lost response) changes
+	// nothing: no new timestamp, notification or edition.published event (#30).
+	// The attempt's diagnostics are still recorded.
+	var ratings *lean.Ratings
+	if layout != nil {
+		ratings = layout.Ratings
+	}
+	same, err := sameEditionTx(ctx, tx, paper, date, e.Schema, string(body), rawLayout, ratings, images)
+	if err != nil {
+		return err
+	}
+	if same {
+		return publishDiagnosticsTx(ctx, tx, eventPaper, date, diagnostics...)
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO editions(paper_id,date,schema,body,published_at,layout,coverage) VALUES (?,?,?,?,?,?,?) ON CONFLICT(paper_id,date) DO UPDATE SET schema=excluded.schema,body=excluded.body,published_at=excluded.published_at,layout=excluded.layout,coverage=excluded.coverage`, paper, date, e.Schema, string(body), publishedAt, rawLayout, coverage)
 	if err != nil {
 		return err
@@ -190,17 +206,70 @@ func publishTx(ctx context.Context, tx *sql.Tx, eventPaper config.Paper, date st
 	if err = indexEdition(ctx, tx, paper, date, e); err != nil {
 		return err
 	}
-	d := PublishDiagnostics{Path: "put", RetentionDays: eventPaper.RetentionDays}
-	if len(diagnostics) > 0 && diagnostics[0] != nil {
-		d = *diagnostics[0]
-	}
-	if err = diagnosticsTx(ctx, tx, paper, date, true, d); err != nil {
+	if err = publishDiagnosticsTx(ctx, tx, eventPaper, date, diagnostics...); err != nil {
 		return err
 	}
 	if err = enqueuePushTx(ctx, tx, paper, date, time.Now()); err != nil {
 		return err
 	}
 	return enqueueEventTx(ctx, tx, eventPaper, webhook.EventEditionPublished, map[string]any{"date": date})
+}
+
+func publishDiagnosticsTx(ctx context.Context, tx *sql.Tx, eventPaper config.Paper, date string, diagnostics ...*PublishDiagnostics) error {
+	d := PublishDiagnostics{Path: "put", RetentionDays: eventPaper.RetentionDays}
+	if len(diagnostics) > 0 && diagnostics[0] != nil {
+		d = *diagnostics[0]
+	}
+	return diagnosticsTx(ctx, tx, eventPaper.ID, date, true, d)
+}
+
+// sameEditionTx reports whether date's stored edition already has exactly this
+// schema, body, layout and set of retained images.
+func sameEditionTx(ctx context.Context, tx *sql.Tx, paper, date string, schema int, body string, layout any, ratings *lean.Ratings, images map[string]Image) (bool, error) {
+	var storedSchema int
+	var storedBody string
+	var storedLayout, storedCoverage sql.NullString
+	err := tx.QueryRowContext(ctx, "SELECT schema,body,layout,coverage FROM editions WHERE paper_id=? AND date=?", paper, date).Scan(&storedSchema, &storedBody, &storedLayout, &storedCoverage)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	wantLayout, hasLayout := layout.(string)
+	if storedSchema != schema || storedBody != body || storedLayout.Valid != hasLayout || storedLayout.String != wantLayout {
+		return false, nil
+	}
+	// Coverage follows the ratings the publication was given.
+	if storedCoverage.Valid != (ratings != nil) {
+		return false, nil
+	}
+	if ratings != nil {
+		var stored EditionCoverage
+		if err = json.Unmarshal([]byte(storedCoverage.String), &stored); err != nil {
+			return false, err
+		}
+		if !reflect.DeepEqual(stored.Ratings, *ratings) {
+			return false, nil
+		}
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT item_id,image_sha256 FROM edition_images WHERE paper_id=? AND date=?", paper, date)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	stored := 0
+	for rows.Next() {
+		var item, sha string
+		if err = rows.Scan(&item, &sha); err != nil {
+			return false, err
+		}
+		if im, ok := images[item]; !ok || im.SHA256 != sha {
+			return false, nil
+		}
+		stored++
+	}
+	return stored == len(images), rows.Err()
 }
 
 func (s *Store) Edition(ctx context.Context, scope auth.PaperScope, date string) (*edition.Edition, error) {
