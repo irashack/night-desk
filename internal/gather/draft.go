@@ -307,7 +307,23 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper, feedsOnly 
 	// rather than one long one; the total budget is unchanged.
 	itemBytes := min(maxDraftItemBytes, max(sectionBytes/max(sectionCount, 1), minDraftItemBytes))
 	totalBytes := 0
+	// Gathering places each item from the paper's sources in one inheriting
+	// section; section-fit may move it to another of them.
+	inheriting := []string{}
 	for _, section := range p.Sections {
+		if section.Sources == nil {
+			inheriting = append(inheriting, section.Key)
+		}
+	}
+	for _, section := range p.Sections {
+		var others []string
+		if section.Sources == nil && len(inheriting) > 1 {
+			for _, key := range inheriting {
+				if key != section.Key {
+					others = append(others, key)
+				}
+			}
+		}
 		count, used := 0, 0
 		cursor := ""
 		seen := map[string]bool{}
@@ -334,7 +350,7 @@ func (w *Worker) draftCandidates(ctx context.Context, p config.Paper, feedsOnly 
 				if text == "" {
 					continue
 				}
-				d := drafting.Candidate{ID: strconv.FormatInt(c.ID, 10), Section: c.Section, URL: c.CanonicalURL, Outlet: c.Outlet, Title: c.Title, Text: text, Byline: strings.Join(c.Byline, ", "), Aliases: c.Aliases}
+				d := drafting.Candidate{ID: strconv.FormatInt(c.ID, 10), Section: c.Section, URL: c.CanonicalURL, Outlet: c.Outlet, Title: c.Title, Text: text, Byline: strings.Join(c.Byline, ", "), Aliases: c.Aliases, Sections: others}
 				if c.WireGroup != nil {
 					d.WireGroup = *c.WireGroup
 				}

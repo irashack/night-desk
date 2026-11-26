@@ -162,9 +162,22 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 	attempted := 0
 	feedCache := map[string]*gofeed.Feed{}
 	var failures []error
+	// Paper-level sources feed every section that inherits them. Their feeds are
+	// read once, so each item is placed in one inheriting section (a candidate
+	// belongs to one section); drafting's section-fit pass may move it to
+	// another inheriting section.
+	inheriting := []config.Section{}
+	for _, section := range p.Sections {
+		if section.Sources == nil {
+			inheriting = append(inheriting, section)
+		}
+	}
+	placed := map[string]int{}
 	for _, section := range p.Sections {
 		sources := sectionSources(p, section, ratings.Outlets)
-		for _, source := range sources {
+		for si, source := range sources {
+			// sectionSources lists an inheriting section's paper sources first.
+			inherited := section.Sources == nil && si < len(p.Sources)
 			feedURL := source.Feed
 			if source.GoogleNews != nil {
 				locale, region := p.NewsLocale()
@@ -220,7 +233,11 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 						continue
 					}
 				}
-				c := candidate.Candidate{Section: section.Key, CanonicalURL: link, Title: plain(item.Title), Outlet: plain(feed.Title), PublishedAt: item.PublishedParsed, FetchedAt: time.Now().UTC(), State: "unavailable"}
+				key := section.Key
+				if inherited {
+					key = placeInherited(plain(item.Title), inheriting, placed)
+				}
+				c := candidate.Candidate{Section: key, CanonicalURL: link, Title: plain(item.Title), Outlet: plain(feed.Title), PublishedAt: item.PublishedParsed, FetchedAt: time.Now().UTC(), State: "unavailable"}
 				if c.PublishedAt == nil {
 					c.PublishedAt = item.UpdatedParsed
 				}
@@ -297,6 +314,9 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 				}
 				if !duplicate {
 					list = append(list, c)
+					if inherited {
+						placed[key]++
+					}
 				}
 			}
 		}
@@ -512,4 +532,40 @@ func canonicalURL(final string, page []byte) string {
 			}
 		}
 	}
+}
+
+// placeInherited chooses the inheriting section for an item from a paper-level
+// source: the section whose title words its headline names most, then the
+// section holding the fewest such items so far, then the first configured. With
+// no headline match this deals items out in turn, so every inheriting section
+// gets candidates even when no model is configured.
+func placeInherited(title string, sections []config.Section, placed map[string]int) string {
+	words := map[string]bool{}
+	for _, w := range titleWords(title) {
+		words[w] = true
+	}
+	best, bestScore := "", -1
+	for _, section := range sections {
+		score := 0
+		for _, term := range titleWords(section.Title) {
+			if words[term] || words[term+"s"] || (strings.HasSuffix(term, "s") && words[strings.TrimSuffix(term, "s")]) {
+				score++
+			}
+		}
+		if score > bestScore || (score == bestScore && placed[section.Key] < placed[best]) {
+			best, bestScore = section.Key, score
+		}
+	}
+	return best
+}
+
+// titleWords returns the lower-case words of at least three letters or digits.
+func titleWords(s string) []string {
+	out := []string{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		if utf8.RuneCountInString(w) >= 3 {
+			out = append(out, w)
+		}
+	}
+	return out
 }

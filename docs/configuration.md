@@ -243,8 +243,13 @@ stories. The reader itself stays in English.
 Sources, retention and coverage lean are operator configuration:
 `papers[].sources` or `papers[].sections[].sources` accept `feed`, operator-only
 `opml` and site-limited `google_news` sources; an omitted section list inherits the
-paper's sources and an explicit empty list disables gathering there. A section
-with `find_sources: true` and no sources of its own finds them: on the next run it
+paper's sources and an explicit empty list disables gathering there. When several
+sections inherit, each paper feed is read once and every story goes to one of
+them: the section whose title its headline names, otherwise the one holding the
+fewest so far, so each inheriting section gets stories. With models, the
+section-fit pass may then move a story to whichever inheriting section suits it
+best. A section with `find_sources: true` and no sources of its own finds them: on
+the next run it
 gathers from a Google News search on its title as well as the paper's feeds, and a
 worker with models asks its fast model (prompt `find-sources`) at most daily for
 publications' feeds, keeping up to five that it fetched and parsed itself; three

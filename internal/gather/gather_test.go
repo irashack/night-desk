@@ -335,3 +335,85 @@ func TestApprovedServiceOnlyReachedFromItself(t *testing.T) {
 		}
 	}
 }
+
+// Paper-level sources feed every section that inherits them, not only the
+// first (issue 29); a section with its own sources keeps exactly those.
+func TestInheritedSourcesFeedEveryInheritingSection(t *testing.T) {
+	ctx := context.Background()
+	var origin string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/paper-feed", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Paper Wire</title>
+  <item><title>Council passes budget</title><link>%[1]s/a1</link></item>
+  <item><title>Sports: home team wins final</title><link>%[1]s/a2</link></item>
+  <item><title>Storm closes roads</title><link>%[1]s/a3</link></item>
+  <item><title>Market opens higher</title><link>%[1]s/a4</link></item>
+  <item><title>School board meets</title><link>%[1]s/a5</link></item>
+  </channel></rss>`, origin)
+	})
+	mux.HandleFunc("/own-feed", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Own Wire</title>
+  <item><title>Own story</title><link>%[1]s/own</link></item>
+  <item><title>Shared story</title><link>%[1]s/a3</link></item>
+  </channel></rss>`, origin)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "page") })
+	site := httptest.NewServer(mux)
+	defer site.Close()
+	origin = site.URL
+	parsed, _ := url.Parse(origin)
+	db, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, key, err := keys.Issue(ctx, db, "daily", "worker", auth.Read, auth.Gather)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := auth.Authenticate(ctx, db, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Gather: config.Gather{AllowPrivate: []string{parsed.Host}}, Papers: []config.Paper{{ID: "daily", Sources: []config.Source{{Feed: origin + "/paper-feed"}}, Sections: []config.Section{
+		{Key: "own", Title: "Own", Sources: []config.Source{{Feed: origin + "/own-feed"}}},
+		{Key: "news", Title: "News", Required: true},
+		{Key: "sports", Title: "Sports", Required: true},
+		{Key: "weather", Title: "Weather"},
+	}, RetentionDays: 14}}}
+	server := httptest.NewServer((&api.Server{Store: db, Config: func() *config.Config { return cfg }}).Handler())
+	defer server.Close()
+	w, err := New(server.URL, key, extractFunc(func(_ string, _ []byte) (string, string, error) { return "", "Source reporting.", nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := w.RunOnce(ctx)
+	if err != nil || result.Candidates != 6 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	sections := map[string][]string{}
+	for _, key := range []string{"own", "news", "sports", "weather"} {
+		list, err := db.Candidates(ctx, scope, key, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range list {
+			sections[key] = append(sections[key], strings.TrimPrefix(c.CanonicalURL, origin))
+		}
+	}
+	// The section with its own sources is gathered first and keeps what it saw.
+	if got := strings.Join(sections["own"], ","); !strings.Contains(got, "/own") || !strings.Contains(got, "/a3") || len(sections["own"]) != 2 {
+		t.Fatalf("own = %v", sections["own"])
+	}
+	for _, key := range []string{"news", "sports", "weather"} {
+		if len(sections[key]) == 0 {
+			t.Errorf("inheriting section %s has no candidates: %v", key, sections)
+		}
+	}
+	if !strings.Contains(strings.Join(sections["sports"], ","), "/a2") {
+		t.Errorf("a headline naming a section goes to it: %v", sections)
+	}
+}

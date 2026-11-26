@@ -398,3 +398,41 @@ func TestDraftKeepsValidOpinionLinksAndDropsOthers(t *testing.T) {
 		t.Error("the dropped link is reported as a warning")
 	}
 }
+
+// A candidate from paper-level sources may be labelled with any section that
+// inherits them (issue 29); the writer then sees it in the chosen section.
+func TestSectionFitPlacesInheritedCandidates(t *testing.T) {
+	p := Paper{Sections: []Section{{Key: "news", Title: "News", Required: true}, {Key: "sports", Title: "Sports", Required: true}, {Key: "own", Title: "Own"}}}
+	pool := []Candidate{
+		{ID: "a", Section: "news", Sections: []string{"sports"}, URL: "https://news.example/a", Outlet: "News", Title: "Team wins", Text: "Reported facts."},
+		{ID: "b", Section: "own", URL: "https://news.example/b", Outlet: "News", Title: "Own story", Text: "Reported facts."},
+	}
+	draft := `{"schema":2,"lead":"a","sections":[{"key":"news","items":[{"id":"b","kind":"news","title":"Own story","summary":"Reported facts.","source":"News","url":"https://news.example/b"}]},{"key":"sports","items":[{"id":"a","kind":"news","title":"Team wins","summary":"Reported facts.","source":"News","url":"https://news.example/a"}]},{"key":"own","items":[]}]}`
+	f := &fakeModels{t: t, draft: draft, fit: `{"labels":[{"id":"a","section":"sports","fit":true},{"id":"b","section":"own","fit":true}]}`}
+	if _, _, err := Draft(context.Background(), Models{Fast: f, Writer: f}, p, "", pool, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.requests[0].Messages[1].Content, `"sections":["sports"]`) {
+		t.Fatalf("section-fit input lacks the alternatives: %s", f.requests[0].Messages[1].Content)
+	}
+	writer := f.requests[2].Messages[1].Content
+	if !strings.Contains(writer, `"id":"a","section":"sports"`) || strings.Contains(writer, `"sections":["sports"]`) {
+		t.Fatalf("writer input does not place the candidate: %s", writer)
+	}
+	if pool[0].Section != "news" {
+		t.Fatal("caller's candidates were changed")
+	}
+	for _, tc := range []struct{ fit, want string }{
+		{`{"labels":[{"id":"a","section":"own","fit":true},{"id":"b","section":"own","fit":true}]}`, "labels[0].section"},
+		{`{"labels":[{"id":"a","section":"news","fit":true},{"id":"b","section":"news","fit":true}]}`, "labels[1].section"},
+	} {
+		f := &fakeModels{t: t, draft: draft, fit: tc.fit}
+		if _, _, err := Draft(context.Background(), Models{Fast: f, Writer: f}, p, "", pool, time.Now()); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("fit %s: error = %v, want %s", tc.fit, err, tc.want)
+		}
+	}
+	pool[0].Sections = []string{"invented"}
+	if _, _, err := Draft(context.Background(), Models{Fast: f, Writer: f}, p, "", pool, time.Now()); err == nil || !strings.Contains(err.Error(), "candidates[0].sections[0]") {
+		t.Fatalf("unknown alternative: %v", err)
+	}
+}

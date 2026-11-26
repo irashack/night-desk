@@ -17,8 +17,11 @@ func TestDefaults(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantVersion := name + "-v1"
-			if name == DraftEdition {
+			switch name {
+			case DraftEdition:
 				wantVersion = name + "-v3"
+			case SectionFit:
+				wantVersion = name + "-v2"
 			}
 			if p.Name != name || p.Version != wantVersion || strings.TrimSpace(p.Text) == "" {
 				t.Fatalf("invalid default: %+v", p)
@@ -77,7 +80,7 @@ func TestOverrideAndReset(t *testing.T) {
 		t.Fatalf("updated override = %+v, %v", updated, err)
 	}
 	other, err := s.Get(SectionFit)
-	if err != nil || other.Version != SectionFit+"-v1" {
+	if err != nil || other.Version != SectionFit+"-v2" {
 		t.Fatalf("unrelated default = %+v, %v", other, err)
 	}
 	reset, err := s.Reset(DraftEdition)

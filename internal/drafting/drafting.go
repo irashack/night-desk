@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,8 +43,11 @@ type Section struct {
 
 // Candidate is an immutable source snapshot, treated as untrusted data.
 type Candidate struct {
-	ID        string   `json:"id"`
-	Section   string   `json:"section"`
+	ID      string `json:"id"`
+	Section string `json:"section"`
+	// Sections lists the other sections section-fit may place the candidate
+	// in: those that inherit the paper's sources, when it came from them.
+	Sections  []string `json:"sections,omitempty"`
 	URL       string   `json:"url"`
 	Outlet    string   `json:"outlet"`
 	Title     string   `json:"title"`
@@ -111,6 +115,7 @@ func Draft(ctx context.Context, m Models, p Paper, notes string, candidates []Ca
 	}); err != nil {
 		return empty, nil, fmt.Errorf("section fit: %w", err)
 	}
+	candidates = place(candidates, fit)
 	var stories sameStory
 	if err := complete(ctx, m.Fast, store, prompts.SameStory, input, "", &stories, func() []model.Problem {
 		return validateGroups(stories, candidates)
@@ -239,6 +244,11 @@ func validateInput(p Paper, candidates []Candidate) error {
 		if !sections[c.Section] {
 			return fmt.Errorf("candidates[%d].section: must be a paper section key", i)
 		}
+		for j, s := range c.Sections {
+			if !sections[s] {
+				return fmt.Errorf("candidates[%d].sections[%d]: must be a paper section key", i, j)
+			}
+		}
 		u, err := url.Parse(c.URL)
 		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" || strings.ContainsAny(c.URL, " \t\r\n") {
 			return fmt.Errorf("candidates[%d].url: must be an absolute https URL without userinfo", i)
@@ -263,8 +273,8 @@ func validateFit(fit sectionFit, candidates []Candidate) []model.Problem {
 			problems = append(problems, model.Problem{Path: fmt.Sprintf("labels[%d].id", i), Rule: "must be unique"})
 		}
 		seen[label.ID] = true
-		if ok && label.Section != c.Section {
-			problems = append(problems, model.Problem{Path: fmt.Sprintf("labels[%d].section", i), Rule: "must match the candidate section"})
+		if ok && label.Section != c.Section && !slices.Contains(c.Sections, label.Section) {
+			problems = append(problems, model.Problem{Path: fmt.Sprintf("labels[%d].section", i), Rule: "must match the candidate section or one of its sections"})
 		}
 	}
 	for _, c := range candidates {
@@ -274,6 +284,24 @@ func validateFit(fit sectionFit, candidates []Candidate) []model.Problem {
 		}
 	}
 	return problems
+}
+
+// place returns a copy of candidates with each one in the section its fit
+// label chose, which validateFit allowed, and without the alternatives.
+func place(candidates []Candidate, fit sectionFit) []Candidate {
+	chosen := make(map[string]string, len(fit.Labels))
+	for _, label := range fit.Labels {
+		chosen[label.ID] = label.Section
+	}
+	out := make([]Candidate, len(candidates))
+	for i, c := range candidates {
+		if s := chosen[c.ID]; s != "" {
+			c.Section = s
+		}
+		c.Sections = nil
+		out[i] = c
+	}
+	return out
 }
 
 func validateGroups(stories sameStory, candidates []Candidate) []model.Problem {

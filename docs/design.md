@@ -228,7 +228,10 @@ are not configuration; `nightdesk key issue` and `revoke` manage them.
 
 Sources are RSS/Atom or JSON feeds, OPML imports and site-limited Google News
 searches, per paper or per section; an omitted section list inherits the paper's
-sources and an explicit empty list disables gathering there. A section with
+sources and an explicit empty list disables gathering there. Each story from the
+paper's sources is placed in one inheriting section (by its headline naming the
+section's title, otherwise in turn), and section fit may move it to another
+inheriting section, so no inheriting section is starved by the first. A section with
 `find_sources` and no declared sources gathers a news search on its title while the
 worker looks for publications' feeds; three verified feeds retire the search, and
 declared sources always win. Ingestion filters drop betting picks, fantasy advice,

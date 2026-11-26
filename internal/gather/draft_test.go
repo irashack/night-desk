@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -275,6 +276,11 @@ func TestDraftCandidatesBoundedPagesAndSections(t *testing.T) {
 		// Newest first: IDs 10, 9, 8 in each section.
 		if want := strconv.Itoa(11 - counts[c.Section]); c.ID != want || !strings.HasSuffix(c.URL, "/"+want) {
 			t.Fatal("did not prefer newest", c.ID, c.URL)
+		}
+		// Every section inherits the paper's sources, so section-fit may move
+		// a candidate to any of the others.
+		if len(c.Sections) != 15 || slices.Contains(c.Sections, c.Section) {
+			t.Fatal("alternatives", c.Section, c.Sections)
 		}
 	}
 	if len(selected) > maxDraftCandidates || textBytes > maxDraftTextBytes {
