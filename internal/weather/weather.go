@@ -30,6 +30,10 @@ type Client struct {
 	cache   map[string]*entry
 }
 
+// failureTTL is how long a failed forecast is remembered before the next
+// reader's page asks again.
+const failureTTL = 2 * time.Minute
+
 func New(baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = "https://api.open-meteo.com/v1/forecast"
@@ -62,10 +66,16 @@ func (c *Client) Forecast(ctx context.Context, paper string, lat, lon float64, z
 	e = &entry{loading: make(chan struct{})}
 	c.cache[key] = e
 	c.mu.Unlock()
+	// A failure, including a reader leaving the page mid-fetch, is
+	// remembered only briefly, so one blip does not hide the box for an hour.
 	days := c.fetch(ctx, lat, lon, zone, metric)
+	ttl := time.Hour
+	if days == nil {
+		ttl = failureTTL
+	}
 	c.mu.Lock()
 	e.days = days
-	e.until = time.Now().Add(time.Hour)
+	e.until = time.Now().Add(ttl)
 	close(e.loading)
 	e.loading = nil
 	c.mu.Unlock()

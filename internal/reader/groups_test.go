@@ -353,4 +353,13 @@ func TestNotificationOpensTheNotifiedPaper(t *testing.T) {
 	if got := open(); got != "/" {
 		t.Fatalf("default paper's notification opened %q", got)
 	}
+	// The group paper notifies again; then the default paper backfills an
+	// earlier date, which notifies no one and must not take the click.
+	time.Sleep(5 * time.Millisecond)
+	f.publish(t, paperScope(t, f.db, "c"), "2026-11-23", sampleEdition(), nil)
+	time.Sleep(5 * time.Millisecond)
+	f.publish(t, f.a, "2026-11-20", sampleEdition(), nil)
+	if got := open(); got != "/p/c/" {
+		t.Fatalf("a backfill took the notification click: %q", got)
+	}
 }

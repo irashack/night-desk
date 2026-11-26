@@ -123,3 +123,16 @@ func ParseDate(s string) (time.Time, error) {
 	}
 	return t, nil
 }
+
+// FirstLead is the edition's first item that may lead it (any but an
+// opinion), for when the lead was cut or dropped; "" when there is none.
+func FirstLead(e *Edition) string {
+	for _, section := range e.Sections {
+		for _, item := range section.Items {
+			if item.Kind != "opinion" {
+				return item.ID
+			}
+		}
+	}
+	return ""
+}

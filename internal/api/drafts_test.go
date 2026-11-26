@@ -443,3 +443,36 @@ func TestReaderNotesAPI(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestReviewOpinionFieldsAndLeadCut(t *testing.T) {
+	a := setup(t, nil)
+	ed, err := edition.Decode(strings.NewReader(fixture(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ed.Schema = 2
+	news := ed.Sections[0].Items[0]
+	stance, about := "The calendar matters less than it seems.", news.ID
+	opinion := news
+	opinion.ID, opinion.Kind, opinion.URL, opinion.Stance, opinion.About = "column-1", "opinion", "https://example.com/column", &stance, &about
+	second := news
+	second.ID, second.URL = "economy-2", "https://example.com/economy-2"
+	ed.Sections[0].Items = []edition.Item{news, opinion, second}
+	raw, _ := json.Marshal(ed)
+	const path = "/api/v1/drafts/2026-10-30"
+	rev := draftRevision(t, a.request("PUT", path, string(raw), a.key))
+	// A reviewer may rewrite a column's stance and point it at another story.
+	rev = draftRevision(t, a.request("POST", path+"/review", fmt.Sprintf(`{"revision":%d,"action":"edit","item":"column-1","stance":"A sharper stance.","about":"economy-2"}`, rev), a.key))
+	// Cutting the lead never promotes the column that follows it.
+	rev = draftRevision(t, a.request("POST", path+"/review", fmt.Sprintf(`{"revision":%d,"action":"cut","item":"economy-1"}`, rev), a.key))
+	d, err := a.db.Draft(context.Background(), a.scope, "2026-10-30")
+	if err != nil || d.Body.Lead != "economy-2" || *d.Body.Sections[0].Items[0].Stance != "A sharper stance." || *d.Body.Sections[0].Items[0].About != "economy-2" {
+		t.Fatal(d.Body, err)
+	}
+	// And may turn a column into news, clearing what only columns carry.
+	draftRevision(t, a.request("POST", path+"/review", fmt.Sprintf(`{"revision":%d,"action":"edit","item":"column-1","fields":{"kind":"news","stance":null,"about":null}}`, rev), a.key))
+	d, err = a.db.Draft(context.Background(), a.scope, "2026-10-30")
+	if item := d.Body.Sections[0].Items[0]; err != nil || item.Kind != "news" || item.Stance != nil || item.About != nil {
+		t.Fatal(item, err)
+	}
+}

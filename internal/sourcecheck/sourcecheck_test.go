@@ -31,6 +31,13 @@ func TestTruncated(t *testing.T) {
 		{"no punctuation", "The council voted 5-4", true},
 		{"dangling word", "He was cut off in the", true},
 		{"trailing whitespace", "The council voted.  \n", false},
+		{"cjk full stop", "議会は5対4で可決した。", false},
+		{"cjk question", "議会は可決したか？", false},
+		{"cjk closing bracket", "彼は「十分だ」", false},
+		{"arabic question", "هل صوّت المجلس؟", false},
+		{"devanagari danda", "परिषद ने मतदान किया।", false},
+		{"german closing quote", "Er sagte „genug.“", false},
+		{"cjk without stop", "議会は5対4で可決した", true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

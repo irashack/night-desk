@@ -232,6 +232,15 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 						result.Dropped[rule]++
 						continue
 					}
+					if resolved {
+						// The publisher's page may already have come from another
+						// feed this run; its host, not news.google.com, names it.
+						if seen[link] {
+							continue
+						}
+						seen[link] = true
+						parsed, _ = url.Parse(link)
+					}
 				}
 				key := section.Key
 				if inherited {

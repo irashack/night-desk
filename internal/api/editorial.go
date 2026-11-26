@@ -142,7 +142,7 @@ func (s *Server) restorePaper(w http.ResponseWriter, r *http.Request) {
 	var req restoreRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&req) != nil || req.Revision == nil || *req.Revision < 0 {
+	if dec.Decode(&req) != nil || !atEOF(dec) || req.Revision == nil || *req.Revision < 0 {
 		jsonResponse(w, 422, map[string]any{"errors": []problem{{"revision", "must be a revision number, or 0 for the declared paper"}}})
 		return
 	}
@@ -205,7 +205,7 @@ func strict(raw json.RawMessage, v any) error {
 	if e := dec.Decode(v); e != nil {
 		return e
 	}
-	if dec.More() {
+	if _, e := dec.Token(); e != io.EOF {
 		return errors.New("trailing data")
 	}
 	return nil
@@ -292,4 +292,10 @@ func applyPatch(ed config.Editorial, patch map[string]json.RawMessage) (config.E
 		return ed, problems
 	}
 	return ed, ed.Problems()
+}
+
+// atEOF reports whether nothing follows the decoded value.
+func atEOF(dec *json.Decoder) bool {
+	_, err := dec.Token()
+	return err == io.EOF
 }
