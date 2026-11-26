@@ -277,3 +277,37 @@ func TestSectionKey(t *testing.T) {
 		}
 	}
 }
+
+// TestSectionsEditorRefusesStaleRevision: a form computed from an older revision
+// must not overwrite an edit saved meanwhile (issue #32).
+func TestSectionsEditorRefusesStaleRevision(t *testing.T) {
+	f := setup(t)
+	desk := f.editing(t)
+	r := f.signIn(t, "")
+	r.Body.Close()
+	session, _ := f.session(t)
+	if html := body(t, f.get(t, "/sections")); !strings.Contains(html, `name="revision" value="0"`) {
+		t.Fatalf("form lacks its revision: %s", html)
+	}
+	// The agent renames Faith while the reader's page is open.
+	p, _ := desk.Config().Paper("a")
+	ed := p.Editorial()
+	ed.Sections = append([]config.Section(nil), ed.Sections...)
+	ed.Sections[1].Title = "Belief"
+	if _, problems, err := desk.Save(context.Background(), f.a, ed, 0); err != nil || problems != nil {
+		t.Fatal(err, problems)
+	}
+	r = f.post(t, "/sections", url.Values{"csrf": {session.CSRF}, "revision": {"0"}, "action": {"save"}, "key": {"faith"}, "title": {"Faith and Values"}})
+	html := body(t, r)
+	if r.StatusCode != 409 || !strings.Contains(html, "changed since you opened this page") || !strings.Contains(html, `value="Belief"`) || !strings.Contains(html, `name="revision" value="1"`) {
+		t.Fatalf("stale save: %d %s", r.StatusCode, html)
+	}
+	if got := f.sectionsOf(t, "a")[1].Title; got != "Belief" || revisions(t, desk, f.a) != 1 {
+		t.Fatalf("stale form overwrote the agent's edit: %q", got)
+	}
+	// With the current revision the same save goes through.
+	f.edit(t, session.CSRF, url.Values{"revision": {"1"}, "action": {"save"}, "key": {"faith"}, "title": {"Faith and Values"}})
+	if got := f.sectionsOf(t, "a")[1].Title; got != "Faith and Values" {
+		t.Fatal("current save", got)
+	}
+}

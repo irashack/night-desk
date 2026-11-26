@@ -71,6 +71,20 @@ func OpenAPI() ([]byte, error) {
 				})
 			}
 		}
+		if route.ETag {
+			ok := responses["200"].(map[string]any)
+			ok["headers"] = map[string]any{"ETag": map[string]any{
+				"description": `The paper's editorial revision as a strong ETag, such as "3" ("0": never edited). Sent when the editorial desk is enabled.`,
+				"schema":      map[string]any{"type": "string"},
+			}}
+			if route.Method != "GET" {
+				parameters = append(parameters, map[string]any{
+					"name": "If-Match", "in": "header", "required": false,
+					"description": "The ETag the edit was computed from, or *. A paper at another revision is refused with 409; so is a stale expected_revision. Without either, the edit applies to the newest revision.",
+					"schema":      map[string]any{"type": "string"},
+				})
+			}
+		}
 		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}

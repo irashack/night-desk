@@ -5976,7 +5976,15 @@
                 }
               }
             },
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "description": "The paper's editorial revision as a strong ETag, such as \"3\" (\"0\": never edited). Sent when the editorial desk is enabled.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -6194,6 +6202,17 @@
       "patch": {
         "description": "Available when the server's editorial desk is enabled.",
         "operationId": "edit_paper",
+        "parameters": [
+          {
+            "description": "The ETag the edit was computed from, or *. A paper at another revision is refused with 409; so is a stale expected_revision. Without either, the edit applies to the newest revision.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6237,6 +6256,10 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "expected_revision": {
+                    "minimum": 0,
+                    "type": "integer"
                   },
                   "masthead": {
                     "type": "string"
@@ -6757,7 +6780,15 @@
                 }
               }
             },
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "description": "The paper's editorial revision as a strong ETag, such as \"3\" (\"0\": never edited). Sent when the editorial desk is enabled.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -7483,12 +7514,27 @@
       "post": {
         "description": "Available when the server's editorial desk is enabled.",
         "operationId": "restore_paper",
+        "parameters": [
+          {
+            "description": "The ETag the edit was computed from, or *. A paper at another revision is refused with 409; so is a stale expected_revision. Without either, the edit applies to the newest revision.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "expected_revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "revision": {
                     "minimum": 0,
                     "type": "integer"
@@ -7902,7 +7948,15 @@
                 }
               }
             },
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "ETag": {
+                "description": "The paper's editorial revision as a strong ETag, such as \"3\" (\"0\": never edited). Sent when the editorial desk is enabled.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {

@@ -193,6 +193,9 @@ holds everything that changes at run time. At a high level:
   place, briefs, deadline, motto guidance, sections and boxes) are numbered
   revisions overlaid on the declaration; the YAML file is never rewritten. The last
   50 revisions are kept and any can be restored, revision 0 being the declaration.
+  Every edit is saved only if the revision it was computed from is still current
+  (a compare-and-swap in the store), so a reader's and an agent's concurrent edits
+  never silently overwrite each other: the later one is refused with a conflict.
   Reader notes are revisions of their own.
 - **Candidates.** Immutable article snapshots per paper: canonical URL and aliases,
   extracted text and byline, or an explicit unavailable state, grouped into wire
@@ -290,9 +293,9 @@ editorial revisions or reader notes; see [upgrading](upgrading.md).
 | Call | Capability | Purpose |
 |---|---|---|
 | `GET /api/v1/paper` | read | The effective paper: masthead, place, role, deadline policy, briefs, deadline, motto guidance, ordered sections (with sources and lean), boxes, retention, reader notes, recent candidate URLs and the editorial revision. Readers and subject paths are never returned. |
-| `PATCH /api/v1/paper` | edit | Edit the editorial fields as a merge patch, validated as a whole and saved as a new revision, or 422 with `errors[].path` and `rule` |
+| `PATCH /api/v1/paper` | edit | Edit the editorial fields as a merge patch, validated as a whole and saved as a new revision, or 422 with `errors[].path` and `rule`. The patch merges onto the newest revision; `If-Match` (the `ETag` from `GET /api/v1/paper`, e.g. `"3"`) or `expected_revision` in the body names the revision read, and a stale one is a 409 |
 | `GET /api/v1/paper/revisions` | read | Kept revisions, newest first |
-| `POST /api/v1/paper/restore` | edit | Save a copy of revision n as the newest; `0` returns to the declaration |
+| `POST /api/v1/paper/restore` | edit | Save a copy of revision n as the newest; `0` returns to the declaration. Optional `If-Match` or `expected_revision` as for `PATCH` |
 | `GET`/`PUT /api/v1/paper/notes` | read / edit | The agent-maintained reader notes |
 | `GET /api/v1/feedback?after=<cursor>` | read | Reader events (up, down, save, unsave) since a cursor, each with an opaque per-paper `reader_id` |
 | `GET /api/v1/editions`, `GET /api/v1/editions/{date}` | read | Published editions |

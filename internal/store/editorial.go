@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/irashack/night-desk/internal/auth"
 )
@@ -19,8 +20,26 @@ type EditorialRevision struct {
 	SavedAt  string          `json:"saved_at"`
 }
 
+// ErrEditorialConflict is returned when a conditional save finds the paper at
+// another revision than the one its edit was computed from.
+var ErrEditorialConflict = errors.New("paper revision conflict")
+
 // SaveEditorial records body (nil: back to the declaration) as the paper's next revision.
 func (s *Store) SaveEditorial(ctx context.Context, scope auth.PaperScope, body json.RawMessage) (int64, error) {
+	return s.saveEditorial(ctx, scope, -1, body)
+}
+
+// SaveEditorialAt records body as the paper's next revision only if expected
+// (0: never edited) is still its latest revision; otherwise it returns
+// ErrEditorialConflict and saves nothing. The check and the insert are one statement.
+func (s *Store) SaveEditorialAt(ctx context.Context, scope auth.PaperScope, expected int64, body json.RawMessage) (int64, error) {
+	if expected < 0 {
+		return 0, ErrEditorialConflict
+	}
+	return s.saveEditorial(ctx, scope, expected, body)
+}
+
+func (s *Store) saveEditorial(ctx context.Context, scope auth.PaperScope, expected int64, body json.RawMessage) (int64, error) {
 	paper, err := scopeID(scope)
 	if err != nil {
 		return 0, err
@@ -30,15 +49,25 @@ func (s *Store) SaveEditorial(ctx context.Context, scope auth.PaperScope, body j
 		return 0, err
 	}
 	defer tx.Rollback()
-	var rev int64
-	if err = tx.QueryRowContext(ctx, "SELECT coalesce(max(revision),0)+1 FROM paper_editorial WHERE paper_id=?", paper).Scan(&rev); err != nil {
-		return 0, err
-	}
 	var value any
 	if body != nil {
 		value = string(body)
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO paper_editorial VALUES (?,?,?,?)", paper, rev, value, now()); err != nil {
+	// Computing the next revision, comparing it with expected and inserting it
+	// in one statement keeps a concurrent writer from slipping in between.
+	res, err := tx.ExecContext(ctx, `INSERT INTO paper_editorial
+		SELECT ?, n.revision, ?, ? FROM (SELECT coalesce(max(revision),0)+1 AS revision FROM paper_editorial WHERE paper_id=?) n
+		WHERE ? < 0 OR n.revision = ? + 1`, paper, value, now(), paper, expected, expected)
+	if err != nil {
+		return 0, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return 0, err
+	} else if n == 0 {
+		return 0, ErrEditorialConflict
+	}
+	var rev int64
+	if err = tx.QueryRowContext(ctx, "SELECT max(revision) FROM paper_editorial WHERE paper_id=?", paper).Scan(&rev); err != nil {
 		return 0, err
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM paper_editorial WHERE paper_id=? AND revision<=?", paper, rev-KeptRevisions); err != nil {

@@ -73,13 +73,16 @@ type view struct {
 	Checked string
 	Logout  bool
 	// Home offers a link back to today's paper under the message.
-	Home               bool
-	FrontNavigation    pageNavigation
-	Query              string
-	SavedOnly          bool
-	Results            []store.SearchResult
-	Editing            bool
-	Rows               []sectionRow
+	Home            bool
+	FrontNavigation pageNavigation
+	Query           string
+	SavedOnly       bool
+	Results         []store.SearchResult
+	Editing         bool
+	Rows            []sectionRow
+	// Revision is the editorial revision the Sections rows were read at; the
+	// forms post it back so a save never builds on a stale page.
+	Revision           int64
 	Confirm            *sectionRow
 	Problems           []string
 	AddTitle, AddBrief string
