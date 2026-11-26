@@ -318,7 +318,7 @@ func TestReaderHTTPIsolationAndRendering(t *testing.T) {
 	if economy < 0 || faith <= economy {
 		t.Fatal("sections not in configuration order")
 	}
-	for _, want := range []string{`<span class="where-title">Front page</span><span class="where-page">⌂ 1 of 3</span>`, "Inside today", "Tuesday, October 27, 2026", "Riverside", "No. 1", `rel="noopener noreferrer"`, `name="csrf"`, "data-layout=", "data-mode-choice="} {
+	for _, want := range []string{`<span class="where-title">Front page</span><span class="where-page">⌂ 1 of 3</span>`, "<h2>Inside today", "Tuesday, October 27, 2026", "Riverside", "No. 1", `rel="noopener noreferrer"`, `name="csrf"`, "data-layout=", "data-mode-choice="} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %s", want)
 		}
