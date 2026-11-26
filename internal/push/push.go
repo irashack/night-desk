@@ -97,13 +97,14 @@ func (l *Loop) Run(ctx context.Context) {
 // Tick sends a bounded batch. Push services are public: the guarded client gets
 // no private exceptions, follows no redirects and gives up after five seconds.
 func (l *Loop) Tick(ctx context.Context) error {
-	client := l.client
-	if client == nil {
-		client = fetch.New(nil)
-		client.Timeout = 5 * time.Second
-		defer client.CloseIdleConnections()
-	}
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// The client is built once there is something to send: an idle tick is one
+	// read query.
+	var client *http.Client
+	defer func() {
+		if client != nil && client != l.client {
+			client.CloseIdleConnections()
+		}
+	}()
 	var sent, gone, retried, dropped int
 	defer func() {
 		if l.Log != nil && sent+gone+retried+dropped > 0 {
@@ -120,6 +121,14 @@ func (l *Loop) Tick(ctx context.Context) error {
 		}
 		if err != nil {
 			return err
+		}
+		if client == nil {
+			client = l.client
+			if client == nil {
+				client = fetch.New(nil)
+				client.Timeout = 5 * time.Second
+			}
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		}
 		c := l.Config()
 		if !reads(c, d) {

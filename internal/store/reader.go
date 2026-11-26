@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/irashack/night-desk/internal/auth"
@@ -60,7 +62,38 @@ func decodeGroups(v string) ([]string, error) {
 	}
 	return groups, nil
 }
+
+// SlideWindow bounds how often a session row is rewritten: a reader's requests
+// within it neither move the expiry nor last_seen_at, so browsing does not
+// write to the database on every hit. The expiry may lag by up to this much.
+const SlideWindow = time.Minute
+
 func (s *Store) SlideSession(ctx context.Context, hash [32]byte, now, expires time.Time) error {
+	var current, seen string
+	err := s.db.QueryRowContext(ctx, `SELECT expires_at,last_seen_at FROM sessions WHERE id_hash=?`, hash[:]).Scan(&current, &seen)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auth.ErrUnauthorized
+	}
+	if err != nil {
+		return err
+	}
+	currentExpires, err := time.Parse(time.RFC3339Nano, current)
+	if err != nil {
+		return err
+	}
+	lastSeen, err := time.Parse(time.RFC3339Nano, seen)
+	if err != nil {
+		return err
+	}
+	if !currentExpires.After(now) {
+		return auth.ErrUnauthorized
+	}
+	// last_seen_at moves at most hourly; the expiry only when it drifts by a
+	// window, so a shortened lifetime still applies on the next request.
+	drift := expires.Sub(currentExpires)
+	if drift < SlideWindow && drift > -SlideWindow && lastSeen.After(now.Add(-time.Hour)) {
+		return nil
+	}
 	// julianday avoids lexicographic comparisons between fractional timestamp widths.
 	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET expires_at=?,last_seen_at=CASE WHEN julianday(last_seen_at)<=julianday(?) THEN ? ELSE last_seen_at END WHERE id_hash=? AND julianday(expires_at)>julianday(?)`, expires.UTC().Format(time.RFC3339Nano), now.Add(-time.Hour).UTC().Format(time.RFC3339Nano), now.UTC().Format(time.RFC3339Nano), hash[:], now.UTC().Format(time.RFC3339Nano))
 	if err != nil {

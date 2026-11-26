@@ -308,8 +308,27 @@ func (s *Store) InsertKey(ctx context.Context, id, paper, label string, hash [32
 }
 func (s *Store) LookupAgentHash(ctx context.Context, hash [32]byte) (string, string, error) {
 	var paper, capabilities string
-	e := s.db.QueryRowContext(ctx, "UPDATE agent_keys SET last_used_at=? WHERE hash=? AND revoked_at IS NULL RETURNING paper_id,capabilities", now(), hash[:]).Scan(&paper, &capabilities)
-	return paper, capabilities, e
+	var used sql.NullString
+	e := s.db.QueryRowContext(ctx, "SELECT paper_id,capabilities,last_used_at FROM agent_keys WHERE hash=? AND revoked_at IS NULL", hash[:]).Scan(&paper, &capabilities, &used)
+	if e != nil {
+		return paper, capabilities, e
+	}
+	// last_used_at is recorded at most once a minute, so an agent's requests do
+	// not each write to the database.
+	if used.Valid {
+		if t, err := time.Parse(time.RFC3339Nano, used.String); err == nil && time.Since(t) >= 0 && time.Since(t) < time.Minute {
+			return paper, capabilities, nil
+		}
+	}
+	r, e := s.db.ExecContext(ctx, "UPDATE agent_keys SET last_used_at=? WHERE hash=? AND revoked_at IS NULL", now(), hash[:])
+	if e != nil {
+		return paper, capabilities, e
+	}
+	// A key revoked between the read and the write is refused.
+	if n, err := r.RowsAffected(); err == nil && n == 0 {
+		return "", "", sql.ErrNoRows
+	}
+	return paper, capabilities, nil
 }
 func (s *Store) RevokeKey(ctx context.Context, id string) error {
 	r, e := s.db.ExecContext(ctx, "UPDATE agent_keys SET revoked_at=COALESCE(revoked_at,?) WHERE id=?", now(), id)
