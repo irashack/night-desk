@@ -310,3 +310,18 @@ func TestRunStopsOnContext(t *testing.T) {
 		t.Fatal("loop ignored cancellation")
 	}
 }
+
+func TestIdleTickBuildsNoClient(t *testing.T) {
+	c, _ := hookConfig(t, "https://127.0.0.1/hook", "test-secret")
+	s, _, _ := outbox(t, c)
+	built := 0
+	// Before the first attempt is due, a tick has nothing to send.
+	at := time.Now().Add(-time.Hour)
+	loop := &Loop{Store: s, Config: func() *config.Config { return c }, Now: func() time.Time { return at }, newClient: func(fetch.Allow) *http.Client { built++; return http.DefaultClient }}
+	if err := loop.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if built != 0 {
+		t.Fatalf("idle tick built %d clients", built)
+	}
+}

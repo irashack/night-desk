@@ -63,15 +63,14 @@ func (l *Loop) Run(ctx context.Context) {
 // Tick delivers a bounded batch with an injectable clock. Attempts are claimed
 // durably before I/O; receivers must deduplicate the stable event ID.
 func (l *Loop) Tick(ctx context.Context) error {
-	c := l.Config()
-	newClient := l.newClient
-	if newClient == nil {
-		newClient = fetch.New
-	}
-	client := newClient(fetch.Allow(c.Gather.AllowPrivate))
-	// Redirects cannot acknowledge an event or forward its signed payload elsewhere.
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	defer client.CloseIdleConnections()
+	// The guarded client is built once there is something to send: an idle tick
+	// is one read query.
+	var client *http.Client
+	defer func() {
+		if client != nil {
+			client.CloseIdleConnections()
+		}
+	}()
 	for i := 0; i < 100; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -82,6 +81,15 @@ func (l *Loop) Tick(ctx context.Context) error {
 		}
 		if err != nil {
 			return err
+		}
+		if client == nil {
+			newClient := l.newClient
+			if newClient == nil {
+				newClient = fetch.New
+			}
+			client = newClient(fetch.Allow(l.Config().Gather.AllowPrivate))
+			// Redirects cannot acknowledge an event or forward its signed payload elsewhere.
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		}
 		// Reload configuration and rotation secrets for every attempt. A removed
 		// target is retired without sending to a destination no longer authorized.

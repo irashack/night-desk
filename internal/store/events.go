@@ -166,6 +166,16 @@ type Delivery struct {
 // crash; interrupted attempts count toward the bound and retry after one minute.
 // The delivery loop is a singleton per server, with atomic claims for safety.
 func (s *Store) ClaimDelivery(ctx context.Context, at time.Time) (Delivery, error) {
+	// An idle server only reads: a write transaction every tick would keep an SD
+	// card or a spun-down disk awake. Any open row that is due is either
+	// claimable or an exhausted attempt to mark failed.
+	var due bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at<=?)`, at.Unix()).Scan(&due); err != nil {
+		return Delivery{}, err
+	}
+	if !due {
+		return Delivery{}, sql.ErrNoRows
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Delivery{}, err

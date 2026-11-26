@@ -145,6 +145,15 @@ type PushDelivery struct {
 // the lease survives a crash and an interrupted attempt counts toward the bound.
 // Expired subscriptions and exhausted deliveries are removed first.
 func (s *Store) ClaimPush(ctx context.Context, at time.Time) (PushDelivery, error) {
+	// An idle server only reads (see ClaimDelivery): write only when there is a
+	// subscription to expire or a delivery that is due or exhausted.
+	var due bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM push_deliveries WHERE next_attempt_at<=?) OR EXISTS(SELECT 1 FROM push_subscriptions WHERE expires_at IS NOT NULL AND julianday(expires_at)<=julianday(?))`, at.Unix(), at.UTC().Format(time.RFC3339Nano)).Scan(&due); err != nil {
+		return PushDelivery{}, err
+	}
+	if !due {
+		return PushDelivery{}, sql.ErrNoRows
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return PushDelivery{}, err
