@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -170,5 +171,28 @@ func TestPasswordWorkIsBounded(t *testing.T) {
 	}
 	for i := 0; i < cap(hashing); i++ {
 		<-hashing
+	}
+}
+
+func TestLimiterKeepsThrottledKeyWhenFull(t *testing.T) {
+	now := time.Unix(1000, 0)
+	l := NewLimiter()
+	l.SetClock(func() time.Time { return now })
+	for i := 0; i < freeFailures+3; i++ {
+		l.Attempt("user:victim")
+	}
+	if l.Attempt("user:victim") == 0 {
+		t.Fatal("victim not throttled")
+	}
+	// Fill the limiter with made-up names at their free limit: none of them is
+	// pruned, and each new one must evict something.
+	for i := 0; i < limiterKeys+10; i++ {
+		now = now.Add(time.Millisecond)
+		for j := 0; j < freeFailures; j++ {
+			l.Attempt(fmt.Sprintf("user:spray%d", i))
+		}
+	}
+	if v, ok := l.keys["user:victim"]; !ok || v.failures <= freeFailures {
+		t.Fatal("spraying names reset the victim's failures")
 	}
 }

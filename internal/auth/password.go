@@ -197,8 +197,10 @@ func (l *Limiter) Attempt(keys ...string) time.Duration {
 
 func (l *Limiter) fail(now time.Time, keys []string) {
 	if len(l.keys) >= limiterKeys {
+		// Forget only what fail would forget anyway: a key quiet long enough
+		// to start over, or one still within its free failures.
 		for k, t := range l.keys {
-			if now.Sub(t.last) > maxDelay || t.next.Before(now) && t.failures < freeFailures {
+			if now.Sub(t.last) > 2*maxDelay || t.next.Before(now) && t.failures < freeFailures {
 				delete(l.keys, k)
 			}
 		}
@@ -207,15 +209,16 @@ func (l *Limiter) fail(now time.Time, keys []string) {
 		t, ok := l.keys[k]
 		if !ok {
 			if len(l.keys) >= limiterKeys {
-				// Full of recent failures: forget the oldest, so spraying
-				// names cannot stop a targeted account being tracked.
-				var oldest string
+				// Full of recent failures: forget the key with the fewest, the
+				// oldest among equals, so spraying made-up names a few times
+				// each cannot reset a targeted account's delay.
+				var weakest string
 				for k2, t2 := range l.keys {
-					if oldest == "" || t2.last.Before(l.keys[oldest].last) {
-						oldest = k2
+					if w := l.keys[weakest]; weakest == "" || t2.failures < w.failures || t2.failures == w.failures && t2.last.Before(w.last) {
+						weakest = k2
 					}
 				}
-				delete(l.keys, oldest)
+				delete(l.keys, weakest)
 			}
 			t = &throttle{}
 			l.keys[k] = t
