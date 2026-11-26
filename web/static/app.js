@@ -42,7 +42,7 @@
   if (book) document.body.classList.add('has-book');
   const sync = () => {
     document.documentElement.dataset.layout = layout;
-    all('[data-layout]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
+    all('button[data-layout]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
     if (!book) return;
     document.documentElement.style.setProperty('--progress', String((cur + 1) / pages.length));
     book.classList.toggle('list', layout !== 'pages');
@@ -97,7 +97,7 @@
     if (reduced.matches) finish();
     else { moving.addEventListener('animationend', finish, {once: true}); setTimeout(finish, 900); }
   }
-  all('[data-layout]').forEach((b) => b.addEventListener('click', () => {
+  all('button[data-layout]').forEach((b) => b.addEventListener('click', () => {
     if (busy) return;
     layout = b.dataset.layout; remember('layout', layout); sync(); setMenu(false);
     if (book) {

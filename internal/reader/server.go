@@ -77,7 +77,7 @@ type Server struct {
 // New builds the reader for the configured sign-in mode. Only oidc contacts
 // the provider (for discovery); the others need nothing outside the server.
 func New(ctx context.Context, db *store.Store, current func() *config.Config, clientSecret string) (*Server, error) {
-	t, err := template.New("reader").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }, "clock": clock, "period": period, "asset": asset, "modes": func() []string { return []string{"auto", "light", "sepia", "dark"} }, "percent": func(v float64) float64 { return v * 100 }}).ParseFS(web.Files, "templates/*.html")
+	t, err := template.New("reader").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }, "clock": clock, "period": period, "asset": asset, "modes": func() []string { return []string{"auto", "light", "sepia", "dark"} }, "percent": func(v float64) float64 { return v * 100 }, "longdate": longDate}).ParseFS(web.Files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +279,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("nd_login")
 	if err != nil {
-		http.Error(w, "Invalid sign-in", 400)
+		s.signInFailed(w, http.StatusBadRequest, "This sign-in was started too long ago, or in another tab or window.")
 		return
 	}
 	hash := sha256.Sum256([]byte(c.Value))
@@ -289,24 +289,24 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.cookie(w, "nd_login", "", -1)
 	if !ok || !tx.expires.After(s.now()) || !equal(tx.state, r.URL.Query().Get("state")) || r.URL.Query().Get("code") == "" {
-		http.Error(w, "Invalid sign-in", 400)
+		s.signInFailed(w, http.StatusBadRequest, "This sign-in was started too long ago, or in another tab or window.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(oidc.ClientContext(r.Context(), s.client), 10*time.Second)
 	defer cancel()
 	token, err := s.oauth.Exchange(ctx, r.URL.Query().Get("code"), oauth2.VerifierOption(tx.verifier))
 	if err != nil {
-		http.Error(w, "Sign-in failed", 400)
+		s.signInFailed(w, http.StatusBadRequest, "Your sign-in provider did not confirm who you are.")
 		return
 	}
 	raw, ok := token.Extra("id_token").(string)
 	if !ok {
-		http.Error(w, "Sign-in failed", 400)
+		s.signInFailed(w, http.StatusBadRequest, "Your sign-in provider did not confirm who you are.")
 		return
 	}
 	id, err := s.verifier.Verify(ctx, raw)
 	if err != nil || id.Subject == "" || !equal(id.Nonce, tx.nonce) {
-		http.Error(w, "Sign-in failed", 400)
+		s.signInFailed(w, http.StatusBadRequest, "Your sign-in provider did not confirm who you are.")
 		return
 	}
 	var groups []string
@@ -320,7 +320,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	session := auth.Session{Hash: sha256.Sum256([]byte(key)), Issuer: id.Issuer, Subject: id.Subject, CSRF: random(), Created: now, LastSeen: now, Expires: now.Add(s.lifetime()), Groups: groups, GroupsChecked: checked}
 	if err = s.Store.InsertSession(r.Context(), session); err != nil {
-		http.Error(w, "Sign-in unavailable", 500)
+		s.signInFailed(w, http.StatusInternalServerError, "Night Desk could not save your sign-in.")
 		return
 	}
 	if old, e := r.Cookie("nd_session"); e == nil {
@@ -429,10 +429,15 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 		s.cookie(w, "nd_session", token, int(s.lifetime().Seconds()))
 		if err == auth.ErrUnmapped && !unmappedOK {
 			if r.URL.Path == "/" {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				_, _ = w.Write([]byte("<!doctype html><html lang=\"en\"><title>Night Desk</title><p>No paper for you yet</p></html>"))
+				v := authView{Page: "nopaper", Title: "No paper for you yet"}
+				// Signing out only helps where a different account could
+				// sign in; a proxy or no sign-in at all brings the same one back.
+				if mode := cfg.AuthMode(); mode == config.AuthOIDC || mode == config.AuthLocal {
+					v.CSRF = scope.Session().CSRF
+				}
+				s.renderAuth(w, http.StatusOK, v)
 			} else {
-				http.NotFound(w, r)
+				s.renderAuth(w, http.StatusNotFound, authView{Page: "message", Title: "Page not found", Next: "/"})
 			}
 			return
 		}
@@ -536,6 +541,31 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Clear-Site-Data", "\"cache\", \"storage\"")
 	s.render(w, "message", view{Message: "You are signed out", Logout: true})
 }
+
+// signInFailed explains an OIDC sign-in that did not finish and offers to
+// start it again, instead of a bare error line.
+func (s *Server) signInFailed(w http.ResponseWriter, status int, why string) {
+	s.renderAuth(w, status, authView{Page: "message", Title: "Sign-in did not finish", Error: why, Next: "/login", NextText: "Sign in again"})
+}
+
+// notFound is the reader's page for a date, story or page it does not have,
+// inside the paper's chrome with a way back to today's edition.
+func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	v := s.base(r)
+	v.Message, v.Spot, v.Home = "This page is not in the paper", "paper", true
+	s.renderStatus(w, http.StatusNotFound, "message", v)
+}
+
+// longDate spells an edition date the way the masthead does:
+// "Thursday, November 19, 2026". Anything else is shown as given.
+func longDate(date string) string {
+	t, err := time.Parse(time.DateOnly, date)
+	if err != nil {
+		return date
+	}
+	return t.Format("Monday, January 2, 2006")
+}
+
 func (s *Server) render(w http.ResponseWriter, name string, data view) {
 	s.renderStatus(w, http.StatusOK, name, data)
 }

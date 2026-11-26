@@ -70,8 +70,10 @@ type view struct {
 	Previous, Next                       int
 	Unreviewed                           bool
 	// Checked is when the edition's stories were checked against their sources.
-	Checked            string
-	Logout             bool
+	Checked string
+	Logout  bool
+	// Home offers a link back to today's paper under the message.
+	Home               bool
 	FrontNavigation    pageNavigation
 	Query              string
 	SavedOnly          bool
@@ -177,12 +179,12 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed, err := edition.ParseDate(date)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	ed, layout, err := s.Store.EditionWithLayout(r.Context(), scope, date)
 	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err != nil {
@@ -351,7 +353,7 @@ func (s *Server) archive(w http.ResponseWriter, r *http.Request) {
 	if q := r.URL.Query().Get("page"); q != "" {
 		n, err := strconv.Atoi(q)
 		if err != nil || n < 1 || n > 1000000 {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		page = n

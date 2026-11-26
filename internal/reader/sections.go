@@ -20,7 +20,7 @@ var sectionNotices = map[string]string{"added": "Section added", "saved": "Secti
 
 func (s *Server) sections(w http.ResponseWriter, r *http.Request) {
 	if s.Editorial == nil || !current(r).scope.CanEdit() {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	v := s.sectionsView(r, current(r).paper.Sections)

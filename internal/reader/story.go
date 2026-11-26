@@ -62,14 +62,14 @@ func (s *Server) story(w http.ResponseWriter, r *http.Request) {
 	date, id := r.PathValue("date"), r.PathValue("item")
 	parsed, err := edition.ParseDate(date)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	p := current(r)
 	scope := p.scope.PaperScope()
 	ed, layout, err := s.Store.EditionWithLayout(r.Context(), scope, date)
 	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err != nil {
@@ -85,7 +85,7 @@ func (s *Server) story(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if item == nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	snap, ok, err := s.Store.ReadableSnapshot(r.Context(), scope, item.URL)
