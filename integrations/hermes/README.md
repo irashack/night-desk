@@ -85,7 +85,9 @@ draft and notes writes. Enable only the ones an agent needs.
 
 The server remains the authority. `nightdesk_review_draft` passes `revision`,
 `action` (`approve`, `cut`, `swap`, `edit`, `note`, `send_back`) and that action's
-fields: `item`, `with`, `fields`, top-level item fields, `text` or `request`.
+fields: `item`, `with`, `fields`, top-level item fields, `text` or `request`. In an
+`edit`, `null` removes an optional field: a column (`opinion`, schema 2) becomes news
+with `{"kind": "news", "stance": null, "about": null}`.
 Every action advances the draft revision; a stale revision is a `409`. A reviewer
 approves the current revision, then publishes that approved revision. Author-role
 papers may publish their own current draft revision. Writes need the matching key

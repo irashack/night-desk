@@ -115,10 +115,17 @@ REVIEW_SCHEMA = _schema(
                 "properties": {"kind": {"type": "string"}, "title": {"type": "string"},
                                "summary": {"type": "string"}, "why": {"type": "string"},
                                "source": {"type": "string"}, "url": {"type": "string"},
-                               "minutes": {"type": "integer"}, "image_url": {"type": "string"}}},
+                               "minutes": {"type": "integer"}, "image_url": {"type": "string"},
+                               "byline": {"type": ["string", "null"]},
+                               "sources": {"type": ["array", "null"], "items": {"type": "object"}},
+                               "about": {"type": ["string", "null"]},
+                               "stance": {"type": ["string", "null"]}}},
      "kind": {"type": "string"}, "title": {"type": "string"}, "summary": {"type": "string"},
      "why": {"type": "string"}, "source": {"type": "string"}, "url": {"type": "string"},
      "minutes": {"type": "integer"}, "image_url": {"type": "string"},
+     "byline": {"type": ["string", "null"]},
+     "sources": {"type": ["array", "null"], "items": {"type": "object"}},
+     "about": {"type": ["string", "null"]}, "stance": {"type": ["string", "null"]},
      "text": {"type": "string", "description": "Review note for action note."},
      "request": {"type": "string", "description": "Requested changes for action send_back."}},
     ("date", "revision", "action"))
@@ -423,7 +430,8 @@ def _review_draft(args):
         raise NightDeskError("invalid_action")
     body = {"revision": revision, "action": action}
     for field in ("item", "with", "fields", "kind", "title", "summary", "why", "source",
-                  "url", "minutes", "image_url", "text", "request"):
+                  "url", "minutes", "image_url", "byline", "sources", "about", "stance",
+                  "text", "request"):
         if field in args:
             body[field] = args[field]
     return _request("POST", "/drafts/" + date + "/review", body=body)

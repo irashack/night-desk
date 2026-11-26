@@ -86,6 +86,14 @@ func TestFailureAndTimeout(t *testing.T) {
 			if calls.Load() != 1 {
 				t.Fatal("failures not cached")
 			}
+			// ...but only briefly, unlike a forecast.
+			c.mu.Lock()
+			for _, e := range c.cache {
+				if until := time.Until(e.until); e.days == nil && (until > failureTTL || until <= 0) {
+					t.Error("failure cached for", until)
+				}
+			}
+			c.mu.Unlock()
 		})
 	}
 	network := testhttp.New()

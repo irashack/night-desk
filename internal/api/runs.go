@@ -171,7 +171,7 @@ func (s *Server) reportRun(w http.ResponseWriter, r *http.Request) {
 	if ed != nil {
 		warnings = append(warnings, s.sourceWarnings(r.Context(), p.scope, p.paper, ed)...)
 	}
-	revision, err := s.Store.ReportDraftRun(r.Context(), p.scope, date, lease, p.keyID, outcome, store.DraftSpend{Calls: calls, Tokens: tokens, CostMicros: int64(cost)}, int64(expected), ed, time.Now())
+	revision, err := s.Store.ReportDraftRun(r.Context(), p.scope, date, lease, p.keyID, outcome, store.DraftSpend{Calls: calls, Tokens: tokens, CostMicros: int64(cost)}, int64(expected), ed, s.now())
 	if err != nil {
 		runFailure(w, err)
 		return

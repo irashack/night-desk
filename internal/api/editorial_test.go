@@ -201,3 +201,20 @@ func TestPaperEditsDoNotLoseUpdates(t *testing.T) {
 		t.Fatalf("unconditional edit dropped earlier changes: %+v", p)
 	}
 }
+
+func TestPaperEditsRefuseTrailingData(t *testing.T) {
+	a, _ := setupEditorial(t)
+	for _, tc := range []struct{ method, path, body string }{
+		{"PATCH", "/api/v1/paper", `{"masthead":"The Evening"}}`},
+		{"PATCH", "/api/v1/paper", `{"masthead":"The Evening"}]`},
+		{"POST", "/api/v1/paper/restore", `{"revision":0}}`},
+		{"POST", "/api/v1/paper/restore", `{"revision":0} {}`},
+	} {
+		if w := a.request(tc.method, tc.path, tc.body, a.key); w.Code != 422 {
+			t.Errorf("%s %s %s: %d %s", tc.method, tc.path, tc.body, w.Code, w.Body)
+		}
+	}
+	if p := a.paper(t, "GET", "/api/v1/paper", "", 200); p.Revision != 0 || p.Masthead == "The Evening" {
+		t.Fatalf("a refused edit changed the paper: %+v", p)
+	}
+}

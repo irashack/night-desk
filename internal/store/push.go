@@ -113,16 +113,18 @@ func (s *Store) SignOut(ctx context.Context, hash [32]byte) error {
 // enqueuePushTx queues one notification per subscription the first time a date
 // is published, and only when it is the paper's newest edition: a replaced
 // edition or a backfilled earlier date never notifies.
+// A backfill records nothing either, so it never becomes the edition a
+// notification click leads to (LatestNotifiedPaper).
 func enqueuePushTx(ctx context.Context, tx *sql.Tx, paper, date string, at time.Time) error {
+	var later bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM editions WHERE paper_id=? AND date>?)`, paper, date).Scan(&later); err != nil || later {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO push_editions(paper_id,date,created_at) VALUES (?,?,?) ON CONFLICT DO NOTHING`, paper, date, at.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
 	}
 	if n, err := result.RowsAffected(); err != nil || n == 0 {
-		return err
-	}
-	var later bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM editions WHERE paper_id=? AND date>?)`, paper, date).Scan(&later); err != nil || later {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO push_deliveries(subscription_id,date,next_attempt_at) SELECT id,?,? FROM push_subscriptions WHERE paper_id=?`, date, at.Unix(), paper)

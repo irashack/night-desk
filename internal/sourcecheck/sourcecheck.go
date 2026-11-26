@@ -89,8 +89,10 @@ func hasSourceText(sources []string) bool {
 
 // Terminal punctuation a prose passage may end on. Kept as a rune set because
 // MuckScraper treats typographic quotes, brackets, the guillemet and the
-// ellipsis as sentence endings too.
-const terminalPunctuation = ".!?\"”’')]»…"
+// ellipsis as sentence endings too. Beyond the Latin set: the CJK full-width
+// stops and closing brackets, Arabic and Urdu question mark and full stop,
+// the Devanagari danda, and the low-high German closing quotes.
+const terminalPunctuation = ".!?\"”’')]»…。！？．」』）؟۔।॥“‘›«"
 
 var danglingWords = map[string]struct{}{
 	"a": {}, "an": {}, "the": {}, "and": {}, "or": {}, "but": {}, "of": {}, "at": {}, "to": {},

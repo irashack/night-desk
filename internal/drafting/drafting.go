@@ -116,6 +116,7 @@ func Draft(ctx context.Context, m Models, p Paper, notes string, candidates []Ca
 		return empty, nil, fmt.Errorf("section fit: %w", err)
 	}
 	candidates = place(candidates, fit)
+	input.Candidates = candidates
 	var stories sameStory
 	if err := complete(ctx, m.Fast, store, prompts.SameStory, input, "", &stories, func() []model.Problem {
 		return validateGroups(stories, candidates)
@@ -364,13 +365,7 @@ func constrain(e *edition.Edition, candidates []Candidate) []Problem {
 		section.Items = kept
 	}
 	if leadDropped {
-		e.Lead = ""
-		for _, section := range e.Sections {
-			if len(section.Items) > 0 {
-				e.Lead = section.Items[0].ID
-				break
-			}
-		}
+		e.Lead = edition.FirstLead(e)
 	}
 	// An opinion's story link is a nicety: a link to a story the draft no longer
 	// has (or to another opinion) is dropped rather than failing the draft.
@@ -461,14 +456,14 @@ func attachSources(e *edition.Edition, candidates []Candidate, groups [][]string
 				if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" || strings.ContainsAny(u, " \t\r\n") {
 					return
 				}
-				outlet := []rune(c.Outlet)
+				outlet := []rune(strings.TrimSpace(c.Outlet))
+				if len(outlet) > 80 {
+					outlet = []rune(strings.TrimSpace(string(outlet[:80])))
+				}
 				if len(outlet) == 0 {
 					return
 				}
-				if len(outlet) > 80 {
-					outlet = outlet[:80]
-				}
-				source := edition.Source{Outlet: strings.TrimSpace(string(outlet)), URL: u}
+				source := edition.Source{Outlet: string(outlet), URL: u}
 				if c.Byline != "" && len([]rune(c.Byline)) <= 120 {
 					byline := c.Byline
 					source.Byline = &byline

@@ -417,3 +417,36 @@ func TestInheritedSourcesFeedEveryInheritingSection(t *testing.T) {
 		t.Errorf("a headline naming a section goes to it: %v", sections)
 	}
 }
+
+func TestResolvedGoogleNewsLinkNamesThePublisher(t *testing.T) {
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"version":"https://jsonfeed.org/version/1.1","title":"","items":[{"id":"2","url":"https://news.google.com/rss/articles/example","title":"Via search"}]}`)
+	}))
+	defer feed.Close()
+	fp, _ := url.Parse(feed.URL)
+	var got []candidate.Candidate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(Paper{Sources: []config.Source{{Feed: feed.URL}}, Sections: []config.Section{{Key: "news"}}, Gather: config.Gather{AllowPrivate: []string{fp.Host}}})
+			return
+		}
+		var batch struct{ Candidates []candidate.Candidate }
+		json.NewDecoder(r.Body).Decode(&batch)
+		got = append(got, batch.Candidates...)
+		fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	w, err := New(server.URL, "test-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Resolve = func(context.Context, *http.Client, string) (string, error) {
+		return "https://publisher.invalid/story", nil
+	}
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].CanonicalURL != "https://publisher.invalid/story" || got[0].Outlet != "publisher.invalid" {
+		t.Fatalf("%+v", got)
+	}
+}

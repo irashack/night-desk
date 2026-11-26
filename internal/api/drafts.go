@@ -179,7 +179,7 @@ func (s *Server) reviewDraft(w http.ResponseWriter, r *http.Request) {
 	case "swap":
 		allowed = append(allowed, "item", "with")
 	case "edit":
-		allowed = append(allowed, "item", "fields", "kind", "title", "summary", "why", "source", "byline", "sources", "url", "minutes", "image_url")
+		allowed = append(allowed, "item", "fields", "kind", "title", "summary", "why", "source", "byline", "sources", "url", "minutes", "image_url", "about", "stance")
 	case "note":
 		allowed = append(allowed, "text")
 	case "send_back":
@@ -246,13 +246,7 @@ func reviewBody(ed *edition.Edition, obj map[string]json.RawMessage, action stri
 			case "cut":
 				ed.Sections[i].Items = append(ed.Sections[i].Items[:j], ed.Sections[i].Items[j+1:]...)
 				if ed.Lead == id {
-					ed.Lead = ""
-					for _, sec := range ed.Sections {
-						if len(sec.Items) > 0 {
-							ed.Lead = sec.Items[0].ID
-							break
-						}
-					}
+					ed.Lead = edition.FirstLead(ed)
 				}
 			case "swap":
 				replacement, problems := decodeReviewItem(obj["with"], "with", ed.Schema)
@@ -277,7 +271,7 @@ func reviewBody(ed *edition.Edition, obj map[string]json.RawMessage, action stri
 					if json.Unmarshal(raw, &patch) != nil || patch == nil {
 						return []problem{{"fields", "must be an object of item fields"}}
 					}
-					if problems := unknownFields(patch, "kind", "title", "summary", "why", "source", "byline", "sources", "url", "minutes", "image_url"); len(problems) > 0 {
+					if problems := unknownFields(patch, "kind", "title", "summary", "why", "source", "byline", "sources", "url", "minutes", "image_url", "about", "stance"); len(problems) > 0 {
 						for i := range problems {
 							problems[i].Path = "fields." + problems[i].Path
 						}
@@ -291,6 +285,12 @@ func reviewBody(ed *edition.Edition, obj map[string]json.RawMessage, action stri
 				var fields map[string]json.RawMessage
 				_ = json.Unmarshal(raw, &fields)
 				for key, value := range patch {
+					// null removes an optional field, such as a column's
+					// stance and about when it becomes news.
+					if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+						delete(fields, key)
+						continue
+					}
 					fields[key] = value
 				}
 				raw, _ = json.Marshal(fields)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -83,7 +84,8 @@ func Decode(body []byte) (config.Editorial, []string) {
 	if err := dec.Decode(&e); err != nil {
 		return e, []string{"$: " + err.Error()}
 	}
-	if dec.More() {
+	// More misses a stray closing bracket; only EOF proves nothing follows.
+	if _, err := dec.Token(); err != io.EOF {
 		return e, []string{"$: trailing data"}
 	}
 	return e, e.Problems()
