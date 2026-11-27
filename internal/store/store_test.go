@@ -256,3 +256,31 @@ func migrationCount(t *testing.T) int {
 	}
 	return len(paths)
 }
+
+func TestFailedBackupLeavesNoSnapshot(t *testing.T) {
+	s, dir := open(t)
+	imageDir := filepath.Join(dir, "images", "ab")
+	if e := os.MkdirAll(imageDir, 0700); e != nil {
+		t.Fatal(e)
+	}
+	// A non-regular file in the image store fails the backup after the
+	// database copy is written.
+	if e := os.Symlink("/dev/null", filepath.Join(imageDir, "odd.jpg")); e != nil {
+		t.Fatal(e)
+	}
+	backup := filepath.Join(t.TempDir(), "backup")
+	if e := s.Backup(ctx, backup); e == nil {
+		t.Fatal("backup with a non-regular image succeeded")
+	}
+	for _, name := range []string{"nightdesk.db", "images"} {
+		if _, e := os.Lstat(filepath.Join(backup, name)); !os.IsNotExist(e) {
+			t.Fatalf("a failed backup left %s behind", name)
+		}
+	}
+	if e := os.Remove(filepath.Join(imageDir, "odd.jpg")); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.Backup(ctx, backup); e != nil {
+		t.Fatal("retrying into the same directory failed", e)
+	}
+}

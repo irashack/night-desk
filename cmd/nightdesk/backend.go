@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -107,6 +108,14 @@ func backend(args []string, out, errOut io.Writer) int {
 		return 1
 	}
 	c := manager.Current()
+	if args[0] == "backup" {
+		// Open would create an empty database at a mistyped data_dir, and the
+		// backup of it would succeed.
+		if _, e := os.Stat(filepath.Join(c.Server.DataDir, "nightdesk.db")); e != nil {
+			log.Error("backup failed: no nightdesk.db in server.data_dir", "data_dir", c.Server.DataDir)
+			return 1
+		}
+	}
 	db, e := store.Open(c.Server.DataDir)
 	if e != nil {
 		log.Error("database open failed")

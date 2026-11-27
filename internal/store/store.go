@@ -449,7 +449,7 @@ func (s *Store) Keys(ctx context.Context, paper string) ([]Key, error) {
 // Backup copies it: a restore without it silently stops every device's pushes.
 const PushKeyFile = "vapid.key"
 
-func (s *Store) Backup(ctx context.Context, dir string) error {
+func (s *Store) Backup(ctx context.Context, dir string) (e error) {
 	s.backupMu.Lock()
 	defer s.backupMu.Unlock()
 	abs, e := filepath.Abs(dir)
@@ -467,9 +467,25 @@ func (s *Store) Backup(ctx context.Context, dir string) error {
 		return e
 	}
 	dest := filepath.Join(abs, "nightdesk.db")
+	// A failed backup removes what it wrote, so a partial snapshot never
+	// stands under the final name (and the same directory can be retried).
+	_, statErr := os.Lstat(filepath.Join(abs, "images"))
+	imagesExisted := statErr == nil
+	wroteDB := false
+	defer func() {
+		if e == nil || !wroteDB {
+			return
+		}
+		_ = os.Remove(dest)
+		_ = os.Remove(filepath.Join(abs, PushKeyFile))
+		if !imagesExisted {
+			_ = os.RemoveAll(filepath.Join(abs, "images"))
+		}
+	}()
 	if _, e = s.db.ExecContext(ctx, "VACUUM INTO ?", dest); e != nil {
 		return e
 	}
+	wroteDB = true
 	// Content-addressed images are immutable and never removed during publication.
 	root := filepath.Join(s.dataDir, "images")
 	e = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
@@ -515,7 +531,8 @@ func (s *Store) Backup(ctx context.Context, dir string) error {
 	if e != nil {
 		return e
 	}
-	return copyPrivate(filepath.Join(s.dataDir, PushKeyFile), filepath.Join(abs, PushKeyFile))
+	e = copyPrivate(filepath.Join(s.dataDir, PushKeyFile), filepath.Join(abs, PushKeyFile))
+	return e
 }
 
 // copyPrivate copies a private file, if it exists, to a new file at mode 0600.

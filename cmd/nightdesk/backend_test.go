@@ -90,6 +90,24 @@ papers:
 	if code, _, errOut = invoke("backup", backup); code != 0 {
 		t.Fatal(code, errOut)
 	}
+	// A configuration whose data_dir has no database is not backed up as an
+	// empty install.
+	moved := filepath.Join(dir, "data-moved")
+	if e := os.Rename(filepath.Join(dir, "data"), moved); e != nil {
+		t.Fatal(e)
+	}
+	if code, _, _ := invoke("backup", filepath.Join(dir, "backup-empty")); code == 0 {
+		t.Fatal("backup of a missing database succeeded")
+	}
+	if _, e := os.Stat(filepath.Join(dir, "data", "nightdesk.db")); !os.IsNotExist(e) {
+		t.Fatal("backup created a database at the missing data_dir")
+	}
+	if e := os.RemoveAll(filepath.Join(dir, "data")); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Rename(moved, filepath.Join(dir, "data")); e != nil {
+		t.Fatal(e)
+	}
 	copy, e := store.Open(backup)
 	if e != nil {
 		t.Fatal(e)

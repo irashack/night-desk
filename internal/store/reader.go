@@ -91,7 +91,10 @@ func (s *Store) SlideSession(ctx context.Context, hash [32]byte, now, expires ti
 	// last_seen_at moves at most hourly; the expiry only when it drifts by a
 	// window, so a shortened lifetime still applies on the next request.
 	drift := expires.Sub(currentExpires)
-	if drift < SlideWindow && drift > -SlideWindow && lastSeen.After(now.Add(-time.Hour)) {
+	// A lifetime shorter than two windows slides at half its length instead,
+	// or a reader would be signed out mid-use.
+	window := min(SlideWindow, expires.Sub(now)/2)
+	if drift < window && drift > -window && lastSeen.After(now.Add(-time.Hour)) {
 		return nil
 	}
 	// julianday avoids lexicographic comparisons between fractional timestamp widths.

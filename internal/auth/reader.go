@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"slices"
@@ -184,6 +185,11 @@ func AuthenticateReader(ctx context.Context, lookup SessionLookup, cfg *config.C
 		return ReaderScope{}, ErrUnauthorized
 	}
 	session, err := lookup.Session(ctx, sha256.Sum256([]byte(token)))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, ErrUnauthorized) {
+		// A storage failure is not a sign-out: the caller answers 500 and
+		// keeps the reader's cookie.
+		return ReaderScope{}, err
+	}
 	if err != nil || !session.Expires.After(now) {
 		return ReaderScope{}, ErrUnauthorized
 	}
