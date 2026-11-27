@@ -104,6 +104,12 @@ type responseError int
 
 func (e responseError) Error() string { return fmt.Sprintf("server returned HTTP %d", e) }
 
+// missingEndpoint reports an older server without an optional endpoint.
+func missingEndpoint(err error) bool {
+	var status responseError
+	return errors.As(err, &status) && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed)
+}
+
 func (w *Worker) request(ctx context.Context, method, path string, body []byte, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, w.server+path, bytes.NewReader(body))
 	if err != nil {
@@ -149,7 +155,7 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 			break
 		}
 	}
-	client := fetch.New(fetch.Allow(p.Gather.AllowPrivate))
+	client := newClient(fetch.Allow(p.Gather.AllowPrivate))
 	defer client.CloseIdleConnections()
 	recent := map[string]bool{}
 	for _, u := range p.RecentURLs {
@@ -161,6 +167,9 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 	list := []candidate.Candidate{}
 	attempted := 0
 	feedCache := map[string]*gofeed.Feed{}
+	// Where each feed was finally served from, after redirects: its items are
+	// authorized as coming from there, not from the configured address.
+	feedFinal := map[string]string{}
 	var failures []error
 	// Paper-level sources feed every section that inherits them. Their feeds are
 	// read once, so each item is placed in one inheriting section (a candidate
@@ -188,7 +197,8 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 			}
 			feed, exists := feedCache[feedURL]
 			if !exists {
-				b, _, err := fetch.Read(ctx, client, feedURL, MaxFeedBytes)
+				b, final, err := fetch.Read(ctx, client, feedURL, MaxFeedBytes)
+				feedFinal[feedURL] = final
 				if err == nil {
 					feed, err = gofeed.NewParser().Parse(bytes.NewReader(b))
 				}
@@ -261,7 +271,11 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 				}
 				// A public feed's item (or a Google News redirect) never reaches an
 				// approved private service; that service's own feed may link to it.
-				if resolved && !fetcher.allow.Reached(feedURL, link) {
+				source := feedFinal[feedURL]
+				if source == "" {
+					source = feedURL
+				}
+				if resolved && !fetcher.allow.Reached(source, link) {
 					resolved = false
 				}
 				if resolved {
@@ -394,7 +408,7 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 		body, _ := json.Marshal(map[string]any{"dropped": dropped})
 		// The candidates are already stored; a server without this endpoint
 		// (an older release) must not fail the run.
-		if err := w.request(ctx, "POST", "/api/v1/gather/dropped", body, nil); err != nil {
+		if err := w.request(ctx, "POST", "/api/v1/gather/dropped", body, nil); err != nil && !missingEndpoint(err) {
 			failures = append(failures, errors.New("filter counts could not be reported"))
 		}
 	}
@@ -408,7 +422,7 @@ func (w *Worker) RunOnce(ctx context.Context) (Result, error) {
 		// The candidates are already stored; a server without this endpoint
 		// (an older release) must not fail the run.
 		body, _ := json.Marshal(map[string]any{"hosts": result.Health[:min(len(result.Health), MaxHealthHosts)]})
-		if err := w.request(ctx, "POST", "/api/v1/gather/health", body, nil); err != nil {
+		if err := w.request(ctx, "POST", "/api/v1/gather/health", body, nil); err != nil && !missingEndpoint(err) {
 			failures = append(failures, errors.New("fetch health could not be reported"))
 		}
 	}
@@ -578,3 +592,6 @@ func titleWords(s string) []string {
 	}
 	return out
 }
+
+// newClient builds the run's guarded client; tests swap its transport.
+var newClient = fetch.New

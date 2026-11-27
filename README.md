@@ -159,7 +159,7 @@ binary.
 | `nightdesk backup <dir>` | Writes a consistent SQLite copy and the retained image store. |
 | `nightdesk init --dir <dir>` | Creates a first configuration, migrated database and agent key. `--auth` picks the sign-in mode (`local` by default) and `--public-url` the address readers open; `--standalone` (or `--interactive`) sets up a paper Night Desk writes itself, with `--deadline`, `--sections`, `--units`, `--locale`, `--place` and `--coordinates`. |
 | `nightdesk check --config <file>` | Strictly validates the whole configuration; opens no database and contacts no provider. With `--worker-config <file>` it also validates the worker config and estimates the monthly drafting cost from tier prices. |
-| `nightdesk gather --server <url> --key-file <file>` | Runs the worker; add `--worker-config` to gather and draft, `--once` for one pass. |
+| `nightdesk gather --server <url> --key-file <file>` | Runs the worker: it gathers, and drafts reviewer and `none` papers, from headlines, excerpts and links with the worker key alone. Add `--worker-config` for model-backed drafting, source discovery, tracing and prompt settings, `--once` for one pass. |
 | `nightdesk mcp --server <url> --key-file <file>` | Runs the HTTP-only stdio MCP client. |
 | `nightdesk conformance` | `list` or `serve` the scripted scenarios used to test an integration. |
 | `nightdesk quality --config <file>` | Prints the operator quality report (`--days N`, `--json`): deadlines, holds, unreviewed editions, send-backs, warnings and source checks by rule, drafting runs, tokens and estimated cost, article fetch health by host, review turnaround and feedback trend. The same aggregates are on the optional `/operator` page. |

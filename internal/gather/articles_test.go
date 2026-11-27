@@ -253,3 +253,20 @@ func TestFetchHealthReachesQualityReport(t *testing.T) {
 		t.Fatalf("%+v", h)
 	}
 }
+
+func TestWorkerForgetsIdleHosts(t *testing.T) {
+	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+	w := &Worker{hosts: map[string]*hostState{
+		"healthy.example":   {},
+		"cooling.example":   {failures: 3, until: now.Add(time.Minute)},
+		"recent.example":    {failures: 3, until: now.Add(-time.Hour)},
+		"forgotten.example": {failures: 3, until: now.Add(-25 * time.Hour)},
+	}}
+	w.now = func() time.Time { return now }
+	w.articles(nil, nil)
+	for host, want := range map[string]bool{"healthy.example": false, "cooling.example": true, "recent.example": true, "forgotten.example": false} {
+		if _, ok := w.hosts[host]; ok != want {
+			t.Errorf("%s kept %v, want %v", host, ok, want)
+		}
+	}
+}

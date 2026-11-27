@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,8 +18,10 @@ import (
 	"github.com/irashack/night-desk/internal/candidate"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/edition"
+	"github.com/irashack/night-desk/internal/fetch"
 	"github.com/irashack/night-desk/internal/keys"
 	"github.com/irashack/night-desk/internal/store"
+	"github.com/irashack/night-desk/internal/testhttp"
 )
 
 type extractFunc func(string, []byte) (string, string, error)
@@ -448,5 +451,95 @@ func TestResolvedGoogleNewsLinkNamesThePublisher(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].CanonicalURL != "https://publisher.invalid/story" || got[0].Outlet != "publisher.invalid" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestRedirectedFeedItemsAreAuthorizedFromWhereTheyCameFrom(t *testing.T) {
+	network := testhttp.New()
+	var secretHits atomic.Int32
+	// Names, not IP literals, so the guard checks them as hosts; the test
+	// transport maps them onto the in-memory servers.
+	const serviceURL, publicURL = "http://service.test", "http://public.test"
+	// The approved private service redirects its feed to a public site, whose
+	// items must not reach back into the service.
+	service := network.Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/feed":
+			http.Redirect(w, r, publicURL+"/feed", http.StatusFound)
+		default:
+			secretHits.Add(1)
+			fmt.Fprint(w, `<p>Private service page</p>`)
+		}
+	}))
+	defer service.Close()
+	public := network.Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Public</title><link>%s</link><description>News</description><item><title>Into the service</title><link>%s/secret</link></item></channel></rss>`, publicURL, serviceURL)
+	}))
+	defer public.Close()
+	hosts := map[string]string{"service.test:80": service.Listener.Addr().String(), "public.test:80": public.Listener.Addr().String()}
+	base := network.Transport()
+	dial := base.DialContext
+	base.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if mapped, ok := hosts[address]; ok {
+			address = mapped
+		}
+		return dial(ctx, network, address)
+	}
+	saved := newClient
+	t.Cleanup(func() { newClient = saved })
+	newClient = func(allow fetch.Allow) *http.Client {
+		c := fetch.New(allow)
+		c.Transport = base
+		return c
+	}
+	var posted []candidate.Candidate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(Paper{Sources: []config.Source{{Feed: serviceURL + "/feed"}}, Sections: []config.Section{{Key: "news"}}, Gather: config.Gather{AllowPrivate: []string{"service.test:80"}}})
+			return
+		}
+		var batch struct{ Candidates []candidate.Candidate }
+		json.NewDecoder(r.Body).Decode(&batch)
+		posted = append(posted, batch.Candidates...)
+		fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	w, err := New(server.URL, "test-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if secretHits.Load() != 0 || len(posted) != 1 || posted[0].State != "unavailable" {
+		t.Fatalf("hits=%d posted=%+v", secretHits.Load(), posted)
+	}
+}
+
+func TestOlderServerWithoutReportingEndpoints(t *testing.T) {
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"version":"https://jsonfeed.org/version/1.1","title":"Feed","items":[{"id":"1","url":"https://publisher.invalid/story","title":"Story"},{"id":"2","url":"https://publisher.invalid/dropped","title":"Sponsored: drop me"}]}`)
+	}))
+	defer feed.Close()
+	fp, _ := url.Parse(feed.URL)
+	reported := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET":
+			json.NewEncoder(w).Encode(Paper{Sources: []config.Source{{Feed: feed.URL}}, Sections: []config.Section{{Key: "news"}}, Gather: config.Gather{AllowPrivate: []string{fp.Host}}, Filters: &config.Filters{BlockedKeywords: []string{"Sponsored"}}})
+		case strings.HasPrefix(r.URL.Path, "/api/v1/gather/"):
+			reported++
+			http.NotFound(w, r)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	defer server.Close()
+	w, err := New(server.URL, "test-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.RunOnce(context.Background()); err != nil || reported == 0 {
+		t.Fatal(err, reported)
 	}
 }

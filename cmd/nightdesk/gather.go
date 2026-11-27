@@ -96,7 +96,7 @@ func gatherCommand(args []string, out, errOut io.Writer) int {
 			fmt.Fprintln(out, "submitted today's draft")
 		}
 		if *once {
-			if err != nil || draftErr != nil {
+			if findErr != nil || err != nil || draftErr != nil {
 				return 1
 			}
 			return 0
