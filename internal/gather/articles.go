@@ -56,6 +56,9 @@ type HostHealth struct {
 	AMP            int    `json:"amp"`
 }
 
+// hostMemory is how long a host's failures are kept after its cool-off ends.
+const hostMemory = 24 * time.Hour
+
 type hostState struct {
 	failures int
 	until    time.Time
@@ -73,6 +76,14 @@ type articles struct {
 func (w *Worker) articles(client *http.Client, allow fetch.Allow) *articles {
 	if w.hosts == nil {
 		w.hosts = map[string]*hostState{}
+	}
+	// Forget hosts with nothing to remember: no failures, or a cool-off long
+	// over, so a long-running worker does not keep every host it ever saw.
+	now := w.now()
+	for host, state := range w.hosts {
+		if state.failures == 0 && !state.until.After(now) || now.Sub(state.until) > hostMemory {
+			delete(w.hosts, host)
+		}
 	}
 	return &articles{w: w, client: client, allow: allow, retryLeft: runRetryBudget, health: map[string]*HostHealth{}}
 }
