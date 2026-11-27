@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -322,7 +324,14 @@ func (s *Store) RemoveAccount(ctx context.Context, username string) error {
 	if err = signOutAccountTx(ctx, tx, username, nil); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE reader_issuer=? AND reader_subject=?`, config.LocalIssuer, username); err != nil {
+	// The feedback stays, under a subject no account can have (usernames hold
+	// no colon), so an account invited later under this name does not inherit
+	// the removed reader's saves and votes.
+	var tag [8]byte
+	if _, err = rand.Read(tag[:]); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE feedback SET reader_subject=? WHERE reader_issuer=? AND reader_subject=?`, "removed:"+username+":"+hex.EncodeToString(tag[:]), config.LocalIssuer, username); err != nil {
 		return err
 	}
 	for _, q := range []string{`DELETE FROM passkeys WHERE username=?`, `DELETE FROM local_invites WHERE username=? AND kind='reset'`, `DELETE FROM local_accounts WHERE username=?`} {
@@ -333,14 +342,15 @@ func (s *Store) RemoveAccount(ctx context.Context, username string) error {
 	return tx.Commit()
 }
 
-// signOutAccountTx deletes the account's sessions (but keep) and the push
-// subscriptions those sessions made.
+// signOutAccountTx deletes the account's sessions (but keep) and its push
+// subscriptions (but keep's), including those whose session was already
+// pruned: after a password reset no other device is notified.
 func signOutAccountTx(ctx context.Context, tx *sql.Tx, username string, keep *[32]byte) error {
 	var except any
 	if keep != nil {
 		except = keep[:]
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE session_hash IN (SELECT id_hash FROM sessions WHERE issuer=? AND subject=? AND (? IS NULL OR id_hash<>?))`, config.LocalIssuer, username, except, except); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE reader_issuer=? AND reader_subject=? AND (? IS NULL OR session_hash IS NOT ?)`, config.LocalIssuer, username, except, except); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE issuer=? AND subject=? AND (? IS NULL OR id_hash<>?)`, config.LocalIssuer, username, except, except)

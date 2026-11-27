@@ -922,3 +922,33 @@ func TestPublicOriginDropsDefaultPort(t *testing.T) {
 		}
 	}
 }
+
+func TestRemovedAccountsFeedbackStaysWithTheRemovedReader(t *testing.T) {
+	f := modeSetup(t, config.Auth{Mode: config.AuthLocal})
+	admin := f.browser(t)
+	admin.setup("ada", "correct horse")
+	_, page := admin.get("/admin")
+	_, page = admin.post("/admin/invite", url.Values{"csrf": {hidden(t, page, "csrf")}})
+	link := linkPattern.FindString(page)
+	bob := f.browser(t)
+	_, page = bob.get(link)
+	bob.post(link, url.Values{"form": {hidden(t, page, "form")}, "username": {"bob"}, "password": {"battery staple"}, "confirm": {"battery staple"}})
+	ctx := context.Background()
+	scope := paperScope(t, f.db, f.cfg.Papers[0].ID)
+	if err := f.db.AddFeedback(ctx, scope, store.Feedback{Date: "2026-10-27", ItemID: "one", Kind: "save", ReaderIssuer: config.LocalIssuer, ReaderSubject: "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := f.db.Feedback(ctx, scope, 0, 10)
+	if err != nil || len(before) != 1 {
+		t.Fatal(before, err)
+	}
+	if err := f.db.RemoveAccount(ctx, "bob"); err != nil {
+		t.Fatal(err)
+	}
+	// The paper keeps the feedback, but no later account named bob owns it:
+	// it now belongs to another (removed) reader.
+	after, _, err := f.db.Feedback(ctx, scope, 0, 10)
+	if err != nil || len(after) != 1 || after[0].ReaderID == before[0].ReaderID {
+		t.Fatalf("%+v %v", after, err)
+	}
+}

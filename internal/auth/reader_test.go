@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,5 +59,23 @@ func TestReaderSubjectFile(t *testing.T) {
 	lookup.session.Subject = "other-reader"
 	if _, err = AuthenticateReader(context.Background(), lookup, c, token, now, time.Hour); err != ErrUnmapped {
 		t.Fatal("wrong subject mapped", err)
+	}
+}
+
+type failingLookup struct {
+	readerLookup
+	err error
+}
+
+func (l failingLookup) Session(context.Context, [32]byte) (Session, error) { return Session{}, l.err }
+
+func TestSessionStorageFailureIsNotASignOut(t *testing.T) {
+	token := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	cfg := &config.Config{}
+	if _, err := AuthenticateReader(context.Background(), failingLookup{err: errors.New("disk I/O error")}, cfg, token, time.Now(), time.Hour); err == nil || err == ErrUnauthorized {
+		t.Fatal("a storage failure signed the reader out:", err)
+	}
+	if _, err := AuthenticateReader(context.Background(), failingLookup{err: sql.ErrNoRows}, cfg, token, time.Now(), time.Hour); err != ErrUnauthorized {
+		t.Fatal("a missing session was not unauthorized:", err)
 	}
 }

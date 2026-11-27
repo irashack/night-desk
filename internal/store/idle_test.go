@@ -194,3 +194,21 @@ func TestAgentKeyLastUsedWritesAtMostOncePerMinute(t *testing.T) {
 		t.Fatal("revoked key accepted", err)
 	}
 }
+
+func TestShortSessionLifetimeStillSlides(t *testing.T) {
+	s, _ := eventStore(t)
+	ctx := context.Background()
+	hash := sha256.Sum256([]byte("short session"))
+	now := time.Now().UTC()
+	lifetime := 30 * time.Second
+	if err := s.InsertSession(ctx, auth.Session{Hash: hash, Issuer: "https://id.example", Subject: "one", CSRF: "c", Created: now, LastSeen: now, Expires: now.Add(lifetime)}); err != nil {
+		t.Fatal(err)
+	}
+	later := now.Add(20 * time.Second)
+	if err := s.SlideSession(ctx, hash, later, later.Add(lifetime)); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := s.Session(ctx, hash); err != nil || !v.Expires.Equal(later.Add(lifetime)) {
+		t.Fatal("a 30-second session did not slide", v.Expires, err)
+	}
+}
