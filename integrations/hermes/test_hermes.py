@@ -511,6 +511,49 @@ class ClientUnitTests(unittest.TestCase):
                     opened.assert_not_called()
 
 
+    def test_long_summary_trimmed_before_the_first_call(self):
+        # Editors' first publish used to fail 422 on summaries over 600 characters (#4423).
+        sentence = "Officials said the plan would take effect next spring. "
+        long_summary = (sentence * 12).strip()  # 659 characters, whole sentences
+        word_summary = "word " * 150  # no sentence end at all
+        edition = json.loads(json.dumps(EDITION_V2))
+        items = edition["sections"][0]["items"]
+        items[0]["summary"] = long_summary
+        items[1]["summary"] = "\u00e9" * 600  # 600 code points (1200 bytes) is allowed
+        original = json.loads(json.dumps(edition))
+        for tool, path in ((plugin.nightdesk_publish_edition, "/api/v1/editions/2026-11-27"),
+                           (plugin.nightdesk_submit_draft, "/api/v1/drafts/2026-11-27")):
+            with mock.patch.dict(os.environ, {"NIGHTDESK_URL": "https://paper.example", "NIGHTDESK_KEY": KEY}, clear=True), \
+                    mock.patch.object(plugin.OPENER, "open", return_value=io.BytesIO(b'{"warnings": []}')) as opened:
+                result = json.loads(tool({"date": "2026-11-27", "edition": edition}))
+            request = opened.call_args.args[0]
+            self.assertTrue(request.full_url.endswith(path))
+            sent = json.loads(request.data)["sections"][0]["items"]
+            self.assertLessEqual(len(sent[0]["summary"]), 600)
+            self.assertTrue(sent[0]["summary"].endswith("next spring."))
+            self.assertTrue(long_summary.startswith(sent[0]["summary"]))
+            self.assertEqual(sent[1]["summary"], items[1]["summary"])
+            self.assertEqual(result["ok"], True)
+            self.assertEqual(result["trimmed"], [{"path": "sections[0].items[0].summary",
+                                                  "from": len(long_summary), "to": len(sent[0]["summary"]),
+                                                  "limit": 600}])
+            self.assertEqual(edition, original)  # the caller's object is not modified
+        short = plugin._trim_summary(word_summary)
+        self.assertLessEqual(len(short), 600)
+        self.assertTrue(short.endswith("word\u2026"))
+        self.assertEqual(short, short.strip())
+
+    def test_trim_keeps_server_422_and_short_editions_untouched(self):
+        error = urllib.error.HTTPError("https://paper.example", 422, "", {}, io.BytesIO(json.dumps(
+            {"warnings": [], "errors": [{"path": "lead", "rule": "must reference an existing item id"}]}).encode()))
+        with mock.patch.dict(os.environ, {"NIGHTDESK_URL": "https://paper.example", "NIGHTDESK_KEY": KEY}, clear=True), \
+                mock.patch.object(plugin.OPENER, "open", side_effect=error) as opened:
+            result = json.loads(plugin.nightdesk_publish_edition({"date": "2026-11-27", "edition": EDITION}))
+        self.assertEqual(result["error"], "validation_failed")
+        self.assertNotIn("trimmed", result)
+        self.assertEqual(json.loads(opened.call_args.args[0].data), EDITION)
+
+
 class PromptTests(unittest.TestCase):
     def test_only_supported_placeholders(self):
         allowed = {"workspace", "scout_topics", "scout_number", "scout_count", "local_tools"}
@@ -560,6 +603,22 @@ class EditionSchemaTests(unittest.TestCase):
                 self.assertIn(word, plugin.PUBLISH_SCHEMA["description"])
         review = plugin.REVIEW_SCHEMA["parameters"]["properties"]
         self.assertEqual(set(review["with"]["properties"]), set(v2_item["properties"]))
+
+    def test_write_tools_state_the_text_limits(self):
+        # The model sees the server's length limits in the tool definition (#4423).
+        repo = HERE.parent.parent
+        v2 = json.loads((repo / "schema" / "edition-v2.json").read_text(encoding="utf-8"))
+        v2_item = v2["properties"]["sections"]["items"]["properties"]["items"]["items"]
+        v2_source = v2_item["properties"]["sources"]["items"]
+        limits = lambda props: {k: v["maxLength"] for k, v in props.items() if "maxLength" in v}
+        self.assertEqual(limits(v2_item["properties"])["summary"], 600)
+        for schema in (plugin.PUBLISH_SCHEMA, plugin.SUBMIT_DRAFT_SCHEMA):
+            item = schema["parameters"]["properties"]["edition"]["properties"]["sections"]["items"][
+                "properties"]["items"]["items"]
+            self.assertEqual(limits(item["properties"]), limits(v2_item["properties"]))
+            self.assertEqual(limits(item["properties"]["sources"]["items"]["properties"]),
+                             limits(v2_source["properties"]))
+        self.assertIn("summary <=600", plugin.PUBLISH_SCHEMA["description"])
 
     def test_restore_offers_expected_revision(self):
         restore = plugin.RESTORE_SCHEMA["parameters"]["properties"]

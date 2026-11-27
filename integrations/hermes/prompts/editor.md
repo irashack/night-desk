@@ -133,6 +133,10 @@ rather than using null or empty strings. Character limits count characters.
   the same story across all retries and replacements of this date; retain today's
   existing ids from nightdesk_get_edition when replacing it. kind is news, seasonal,
   evergreen, brief, or opinion. title <=160 characters, summary <=600, source <=80.
+  Write summaries of about 450 characters or fewer, two or three sentences. A
+  summary over 600 is cut at its last whole sentence before publication and listed
+  in the result's trimmed; reread any trimmed summary and replace the edition if
+  the cut lost something the reader needs.
   url is the actual article's absolute HTTPS URL without credentials.
 - Optional item fields: why <=300 characters; minutes integer 1..240 only when
   supported; image_url an absolute HTTPS URL without credentials.
