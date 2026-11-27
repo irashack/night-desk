@@ -31,6 +31,20 @@ def edition(url="https://example.com/library"):
          "source": "City Gazette", "url": url}]}]}
 
 
+def edition_v2(url="https://example.com/library"):
+    return {"schema": 2, "lead": "news-1", "sections": [{"key": "news", "items": [
+        {"id": "news-1", "kind": "news", "title": "Council opens a new library",
+         "summary": "The new public library opened on Friday.",
+         "source": "City Gazette", "url": url, "byline": "Ana Ruiz",
+         "sources": [{"outlet": "County Herald", "url": "https://herald.example/library",
+                      "byline": "Lee Park"}]},
+        {"id": "news-2", "kind": "opinion", "title": "The library is worth the wait",
+         "summary": "A column on what the new branch changes for readers.",
+         "source": "City Gazette Opinion", "url": "https://example.com/library-column",
+         "byline": "Sam Hill", "about": "news-1",
+         "stance": "The new branch was worth its cost."}]}]}
+
+
 @unittest.skipUnless(os.environ.get("NIGHTDESK_BIN"), "NIGHTDESK_BIN is not set")
 class ConformanceTests(unittest.TestCase):
     @contextmanager
@@ -92,6 +106,18 @@ class ConformanceTests(unittest.TestCase):
                 {"path": "sections[0].items[0].url", "rule": "must be https"}])
             corrected = json.loads(plugin.nightdesk_publish_edition(
                 {"date": DATE, "edition": edition()}))
+            self.assertTrue(corrected["ok"], corrected)
+            self.assertEqual(corrected["date"], DATE)
+
+    def test_validation_schema_2(self):
+        with self.kit("validation"):
+            first = json.loads(plugin.nightdesk_publish_edition(
+                {"date": DATE, "edition": edition_v2("http://example.com/library")}))
+            self.assertEqual(first["error"], "validation_failed")
+            # The kit validates the corrected edition with the server's own rules,
+            # so bylines, further coverage and an opinion column must pass them.
+            corrected = json.loads(plugin.nightdesk_publish_edition(
+                {"date": DATE, "edition": edition_v2()}))
             self.assertTrue(corrected["ok"], corrected)
             self.assertEqual(corrected["date"], DATE)
 

@@ -27,24 +27,60 @@ def _date_property(description="YYYY-MM-DD in the paper's timezone."):
 PAPER_SCHEMA = _schema(
     "nightdesk_paper", "Read the paper's current masthead, place, editorial brief, motto guidance, "
     "deadline, sections and their briefs, timezone and enabled boxes before writing.", {})
+# Edition schema 2 adds bylines, further coverage and opinion columns to v1.
+EDITION_V2_FIELDS = (
+    "Schema 2 (preferred) adds: optional byline <=120 (the writer as the source names them); "
+    "optional sources, at most 12 further-coverage links from other outlets, each {outlet <=80, "
+    "HTTPS url, optional byline}, never repeating the item's own url; and kind opinion for a "
+    "labelled column, with optional stance (<=140, the column's position in one line) and "
+    "optional about (the id of the news story in this edition it argues about, never another "
+    "opinion). stance and about are only for opinion items; lead must not be an opinion. "
+    "Schema 1 has none of these fields.")
+_SOURCE_PROPERTY = {"type": "object", "required": ["outlet", "url"],
+                    "properties": {"outlet": {"type": "string"}, "url": {"type": "string"},
+                                   "byline": {"type": "string"}}}
+_ITEM_PROPERTIES = {
+    "id": {"type": "string"}, "kind": {"type": "string",
+                                       "enum": ["news", "seasonal", "evergreen", "brief", "opinion"]},
+    "title": {"type": "string"}, "summary": {"type": "string"}, "why": {"type": "string"},
+    "source": {"type": "string"}, "url": {"type": "string"}, "minutes": {"type": "integer"},
+    "image_url": {"type": "string"},
+    "byline": {"type": "string", "description": "Schema 2: the writer, as the source names them."},
+    "sources": {"type": "array", "maxItems": 12, "items": _SOURCE_PROPERTY,
+                "description": "Schema 2: further coverage of this story by other outlets."},
+    "about": {"type": "string", "description": "Schema 2, opinion only: the story's item id."},
+    "stance": {"type": "string", "description": "Schema 2, opinion only: the column's position."}}
+
+
+def _edition_property():
+    return {"type": "object",
+            "description": "Edition JSON object, schema/edition-v2.json (or edition-v1.json). "
+                           "The server validates all fields and paper-specific rules.",
+            "required": ["schema", "lead", "sections"],
+            "properties": {"schema": {"type": "integer", "enum": [1, 2]},
+                           "lead": {"type": "string"},
+                           "sections": {"type": "array", "items": {
+                               "type": "object", "required": ["key", "items"],
+                               "properties": {"key": {"type": "string"},
+                                              "items": {"type": "array", "items": {
+                                                  "type": "object", "required": [
+                                                      "id", "kind", "title", "summary", "source", "url"],
+                                                  "properties": _ITEM_PROPERTIES}}}}},
+                           "motto": {"type": "object"}, "boxes": {"type": "object"}}}
+
+
 PUBLISH_SCHEMA = _schema(
     "nightdesk_publish_edition",
     "Publish or replace a dated edition directly (idempotent PUT; author-role papers). "
     "On 422, correct the exact errors[].path and rule and retry the same date. "
-    "Edition schema v1 uses plain text, not Markdown/HTML; lead references an item id. "
+    "Editions use plain text, not Markdown/HTML; lead references a non-opinion item id. "
     "Use the paper's section keys and required sections. Item ids are stable across retries. "
-    "Items need id, kind (news/seasonal/evergreen/brief), title, summary, source and HTTPS url; "
-    "optional why, minutes and HTTPS image_url. Optional motto needs kind "
+    "Items need id, kind (news/seasonal/evergreen/brief, or opinion in schema 2), title, "
+    "summary, source and HTTPS url; optional why, minutes and HTTPS image_url. "
+    + EDITION_V2_FIELDS + " Optional motto needs kind "
     "(scripture/quotation), text and source. Optional boxes.markets needs source, "
     "RFC3339 as_of and quotes (symbol, label, value, change, direction up/down/flat).",
-    {"date": _date_property(),
-     "edition": {"type": "object", "description": "Edition JSON object, schema/edition-v1.json. "
-                 "The server validates all fields and paper-specific rules.",
-                 "required": ["schema", "lead", "sections"],
-                 "properties": {"schema": {"type": "integer", "const": 1},
-                                "lead": {"type": "string"},
-                                "sections": {"type": "array", "items": {"type": "object"}},
-                                "motto": {"type": "object"}, "boxes": {"type": "object"}}}},
+    {"date": _date_property(), "edition": _edition_property()},
     ("date", "edition"))
 FEEDBACK_SCHEMA = _schema(
     "nightdesk_read_feedback",
@@ -82,16 +118,10 @@ LIST_DRAFTS_SCHEMA = _schema(
 SUBMIT_DRAFT_SCHEMA = _schema(
     "nightdesk_submit_draft",
     "Submit or replace a dated draft (idempotent PUT) for review. The server validates the "
-    "edition exactly like publication. Returns the new revision and warnings; on 422 correct "
-    "each errors[].path and rule and retry the same date. Submit content as edition schema v1.",
-    {"date": _date_property(),
-     "edition": {"type": "object", "description": "Edition JSON object, schema/edition-v1.json. "
-                 "The server validates all fields and paper-specific rules.",
-                 "required": ["schema", "lead", "sections"],
-                 "properties": {"schema": {"type": "integer", "const": 1},
-                                "lead": {"type": "string"},
-                                "sections": {"type": "array", "items": {"type": "object"}},
-                                "motto": {"type": "object"}, "boxes": {"type": "object"}}}},
+    "edition exactly like publication (see nightdesk_publish_edition for the fields). Returns "
+    "the new revision and warnings; on 422 correct each errors[].path and rule and retry the "
+    "same date. Submit edition schema 2 (bylines, further coverage, opinion columns) or 1.",
+    {"date": _date_property(), "edition": _edition_property()},
     ("date", "edition"))
 REVIEW_SCHEMA = _schema(
     "nightdesk_review_draft",
@@ -106,11 +136,7 @@ REVIEW_SCHEMA = _schema(
      "action": {"type": "string", "enum": ["approve", "cut", "swap", "edit", "note", "send_back"]},
      "item": {"type": "string", "description": "Existing item id for cut, swap or edit."},
      "with": {"type": "object", "description": "Full replacement item for swap.",
-              "properties": {"id": {"type": "string"}, "kind": {"type": "string"},
-                             "title": {"type": "string"}, "summary": {"type": "string"},
-                             "why": {"type": "string"}, "source": {"type": "string"},
-                             "url": {"type": "string"}, "minutes": {"type": "integer"},
-                             "image_url": {"type": "string"}}},
+              "properties": _ITEM_PROPERTIES},
      "fields": {"type": "object", "description": "Changed item fields for edit.",
                 "properties": {"kind": {"type": "string"}, "title": {"type": "string"},
                                "summary": {"type": "string"}, "why": {"type": "string"},
@@ -195,8 +221,11 @@ REVISIONS_SCHEMA = _schema(
 RESTORE_SCHEMA = _schema(
     "nightdesk_restore_paper",
     "Undo paper edits: save a copy of an earlier revision as the newest, or revision 0 for the "
-    "paper as originally declared. Earlier revisions stay restorable.",
-    {"revision": {"type": "integer", "minimum": 0}}, ("revision",))
+    "paper as originally declared. Earlier revisions stay restorable. Include expected_revision "
+    "(the paper's current revision from nightdesk_paper or nightdesk_paper_revisions) so a "
+    "restore never undoes an edit you have not seen; a 409 means the paper changed since.",
+    {"revision": {"type": "integer", "minimum": 0},
+     "expected_revision": {"type": "integer", "minimum": 0}}, ("revision",))
 
 
 class NightDeskError(Exception):
@@ -503,7 +532,13 @@ def _restore(args):
     revision = args.get("revision")
     if type(revision) is not int or revision < 0:
         raise NightDeskError("invalid_revision")
-    return _request("POST", "/paper/restore", body={"revision": revision})
+    body = {"revision": revision}
+    if "expected_revision" in args:
+        expected = args["expected_revision"]
+        if type(expected) is not int or expected < 0:
+            raise NightDeskError("invalid_expected_revision")
+        body["expected_revision"] = expected
+    return _request("POST", "/paper/restore", body=body)
 
 
 def _handle(handler, args):

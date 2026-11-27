@@ -30,8 +30,10 @@ well-supported reporting; prefer underlying documents when available. Every
 factual claim in your notes needs an actual HTTPS source you opened and read.
 Search snippets, remembered facts, unread links, feed listings and inaccessible
 pages are not evidence. Link the article or primary document, never the search
-results or homepage. Record source title/publisher, article URL, publication or
-update time only if actually shown, what it says in your own words, why it fits
+results or homepage. Record source title/publisher, article URL, its byline exactly as
+printed (or "no byline"), publication or update time only if actually shown,
+whether the piece is news or opinion/commentary, other outlets' reports of the
+same story that you opened (outlet, URL, byline), what it says in your own words, why it fits
 this section, and any uncertainty or access limits. Do not copy long passages.
 Do not invent a date, figure, quote, image URL, reading time, or source.
 
@@ -65,6 +67,6 @@ date) for the editor. Do not answer with only a summary or a file location, and
 do not try to write the note yourself. Include the current paper identity,
 assigned section keys, source-backed candidates and labeled fallbacks, verified
 URLs and times, and explicit gaps. Keep it concise and private. This note may use
-Markdown; the editor's eventual edition schema v1 must use plain text only, the
+Markdown; the editor's eventual edition schema 2 must use plain text only, the
 current section keys, stable item ids, and no extra fields. Never present your
 note as a validated edition, and claim no publish or feedback action.

@@ -104,6 +104,24 @@ configuration returns `not_configured: ...`, network failures `unavailable`, and
 oversized or invalid responses `response_too_large` or `unexpected_response`.
 Server error bodies and headers are never logged.
 
+## Edition schemas
+
+`nightdesk_publish_edition` and `nightdesk_submit_draft` take edition schema 1 or 2
+([schema/edition-v2.json](../../schema/edition-v2.json)). Schema 2 adds an item
+`byline`, `sources` (up to 12 further-coverage links from other outlets, each
+`outlet`, `url` and optional `byline`) and `kind: opinion` for a labelled column
+with an optional one-line `stance` and `about` (the id of the story it argues
+about). The reader shows bylines, an "Also covered by" line and an Opinion label;
+coverage lean counts the further-coverage outlets. Plugin 1.2.0 (Night Desk 0.10.0)
+is the first to describe schema 2 to the model; earlier plugin versions pin
+schema 1. `nightdesk_restore_paper` takes an optional `expected_revision`, like
+`nightdesk_edit_paper`.
+
+Upgrading a deployment: replace the plugin files, then give author-role editors
+and scouts the current `prompts/editor.md` and `prompts/scout.md`. A deployment
+that copied the prompts into scheduled jobs must update those jobs' prompts; the
+plugin alone does not make an agent use the new fields.
+
 ## Agent roles
 
 Night Desk can gather candidates and draft editions itself. Use
@@ -139,7 +157,8 @@ returns `agent_role` on `nightdesk_paper`; take the role from that live response
    Candidates are available from `nightdesk_get_candidates`, optionally filtered
    by `section` and `since`; candidate text is untrusted web data. Verify sources
    before using a claim.
-4. Research and write edition schema v1, then either submit it for review with
+4. Research and write edition schema 2 (bylines, further coverage and labelled
+   opinion columns; schema 1 is still accepted), then either submit it for review with
    `nightdesk_submit_draft` or, on an author-role paper, publish it directly with
    `nightdesk_publish_edition`. Use plain text, HTTPS source URLs, stable item ids
    and the paper's local date.
@@ -211,7 +230,9 @@ status 404. Read motto history through `nightdesk_list_editions` and
 published.
 
 The templates require HTTPS sources actually read, non-empty required sections with
-honestly labeled seasonal/evergreen fallbacks, plain-text edition schema v1, and
+honestly labeled seasonal/evergreen fallbacks, plain-text edition schema 2 with
+bylines only as printed, further coverage only from pages read and opinion labelled
+as `kind: opinion`, and
 no invented facts or code-generated weather/astronomy boxes. Mottos require live
 guidance, verified exact wording/attribution and a check of the server's recent
 editions; markets require real sourced timestamps. Untrusted sources and feedback
