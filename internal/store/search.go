@@ -17,7 +17,7 @@ import (
 // covered the story (edition schema 2), in edition order.
 type SearchResult struct {
 	Date, ItemID, Kind, Title, Summary, Why, Source, Byline, Stance string
-	Outlets                                                          []string
+	Outlets                                                         []string
 }
 
 // SearchIn narrows a query to some of an item's fields. The zero value searches
