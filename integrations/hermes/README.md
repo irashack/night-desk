@@ -117,6 +117,15 @@ is the first to describe schema 2 to the model; earlier plugin versions pin
 schema 1. `nightdesk_restore_paper` takes an optional `expected_revision`, like
 `nightdesk_edit_paper`.
 
+Plugin 1.3.0 states the item text limits (`title` 160, `summary` 600, `why` 300,
+`source` and `outlet` 80, `byline` 120, `stance` 140 characters) as `maxLength` in
+both write tools' schemas. Before `nightdesk_publish_edition` or
+`nightdesk_submit_draft` sends an edition, it shortens any item summary over 600
+characters at its last whole sentence (or at a word, with an ellipsis) and lists
+each change in the result's `trimmed` (`path`, `from`, `to`, `limit`). Every other
+rule, including the other lengths, is still checked by the server, whose 422
+stays the guard.
+
 Upgrading a deployment: replace the plugin files, then give author-role editors
 and scouts the current `prompts/editor.md` and `prompts/scout.md`. A deployment
 that copied the prompts into scheduled jobs must update those jobs' prompts; the

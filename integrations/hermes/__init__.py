@@ -36,20 +36,30 @@ EDITION_V2_FIELDS = (
     "optional about (the id of the news story in this edition it argues about, never another "
     "opinion). stance and about are only for opinion items; lead must not be an opinion. "
     "Schema 1 has none of these fields.")
+# Item text limits, in characters, mirror schema/edition-v2.json and the server's
+# validator; stating them in the tool schema lets the model see them before it calls.
+SUMMARY_LIMIT = 600
 _SOURCE_PROPERTY = {"type": "object", "required": ["outlet", "url"],
-                    "properties": {"outlet": {"type": "string"}, "url": {"type": "string"},
-                                   "byline": {"type": "string"}}}
+                    "properties": {"outlet": {"type": "string", "maxLength": 80},
+                                   "url": {"type": "string"},
+                                   "byline": {"type": "string", "maxLength": 120}}}
 _ITEM_PROPERTIES = {
     "id": {"type": "string"}, "kind": {"type": "string",
                                        "enum": ["news", "seasonal", "evergreen", "brief", "opinion"]},
-    "title": {"type": "string"}, "summary": {"type": "string"}, "why": {"type": "string"},
-    "source": {"type": "string"}, "url": {"type": "string"}, "minutes": {"type": "integer"},
+    "title": {"type": "string", "maxLength": 160},
+    "summary": {"type": "string", "maxLength": SUMMARY_LIMIT,
+                "description": "At most 600 characters; aim for 450 or fewer."},
+    "why": {"type": "string", "maxLength": 300},
+    "source": {"type": "string", "maxLength": 80}, "url": {"type": "string"},
+    "minutes": {"type": "integer", "minimum": 1, "maximum": 240},
     "image_url": {"type": "string"},
-    "byline": {"type": "string", "description": "Schema 2: the writer, as the source names them."},
+    "byline": {"type": "string", "maxLength": 120,
+               "description": "Schema 2: the writer, as the source names them."},
     "sources": {"type": "array", "maxItems": 12, "items": _SOURCE_PROPERTY,
                 "description": "Schema 2: further coverage of this story by other outlets."},
     "about": {"type": "string", "description": "Schema 2, opinion only: the story's item id."},
-    "stance": {"type": "string", "description": "Schema 2, opinion only: the column's position."}}
+    "stance": {"type": "string", "maxLength": 140,
+               "description": "Schema 2, opinion only: the column's position."}}
 
 
 def _edition_property():
@@ -75,8 +85,10 @@ PUBLISH_SCHEMA = _schema(
     "On 422, correct the exact errors[].path and rule and retry the same date. "
     "Editions use plain text, not Markdown/HTML; lead references a non-opinion item id. "
     "Use the paper's section keys and required sections. Item ids are stable across retries. "
-    "Items need id, kind (news/seasonal/evergreen/brief, or opinion in schema 2), title, "
-    "summary, source and HTTPS url; optional why, minutes and HTTPS image_url. "
+    "Items need id, kind (news/seasonal/evergreen/brief, or opinion in schema 2), title "
+    "<=160, summary <=600 characters (aim for 450; the tool trims a longer summary at its "
+    "last sentence and reports it in trimmed), source <=80 and HTTPS url; optional why "
+    "<=300, minutes and HTTPS image_url. "
     + EDITION_V2_FIELDS + " Optional motto needs kind "
     "(scripture/quotation), text and source. Optional boxes.markets needs source, "
     "RFC3339 as_of and quotes (symbol, label, value, change, direction up/down/flat).",
@@ -384,12 +396,66 @@ def _paper(_args):
     return _request("GET", "/paper")
 
 
-def _publish(args):
+_SENTENCE_END = re.compile(r"[.!?][\"'\u201d\u2019)\]]*(?=\s|$)")
+
+
+def _trim_summary(text, limit=SUMMARY_LIMIT):
+    """Shorten text to at most limit characters at its last whole sentence, or at a
+    word with an ellipsis when no sentence ends late enough to keep most of it."""
+    head = text[:limit]
+    ends = [m.end() for m in _SENTENCE_END.finditer(head)]
+    if ends and ends[-1] >= limit // 2:
+        return head[:ends[-1]].rstrip()
+    head = text[:limit - 1]
+    space = head.rfind(" ")
+    if space >= limit // 2:
+        head = head[:space]
+    return head.rstrip(" ,;:-\u2013\u2014") + "\u2026"
+
+
+def _trim_summaries(edition):
+    """Return the edition with item summaries over the server's limit shortened, and
+    a list of what was trimmed. Characters are code points, as the server counts.
+    The caller's object is not changed; anything else malformed is left for the
+    server's 422, which stays the guard."""
+    sections = edition.get("sections")
+    if not isinstance(sections, list):
+        return edition, []
+    trimmed, out = [], []
+    for i, section in enumerate(sections):
+        items = section.get("items") if isinstance(section, dict) else None
+        if not isinstance(items, list):
+            out.append(section)
+            continue
+        new_items = []
+        for j, item in enumerate(items):
+            summary = item.get("summary") if isinstance(item, dict) else None
+            if isinstance(summary, str) and len(summary) > SUMMARY_LIMIT:
+                short = _trim_summary(summary)
+                trimmed.append({"path": "sections[%d].items[%d].summary" % (i, j),
+                                "from": len(summary), "to": len(short), "limit": SUMMARY_LIMIT})
+                item = {**item, "summary": short}
+            new_items.append(item)
+        out.append({**section, "items": new_items})
+    if not trimmed:
+        return edition, []
+    return {**edition, "sections": out}, trimmed
+
+
+def _put_edition(path, args):
     date = _date(args)
     edition = args.get("edition")
     if not isinstance(edition, dict):
         raise NightDeskError("invalid_edition: expected a JSON object")
-    return _request("PUT", "/editions/" + date, body=edition)
+    edition, trimmed = _trim_summaries(edition)
+    result = _request("PUT", path + date, body=edition)
+    if trimmed:
+        result["trimmed"] = trimmed
+    return result
+
+
+def _publish(args):
+    return _put_edition("/editions/", args)
 
 
 def _feedback(args):
@@ -442,11 +508,7 @@ def _list_drafts(args):
 
 
 def _submit_draft(args):
-    date = _date(args)
-    edition = args.get("edition")
-    if not isinstance(edition, dict):
-        raise NightDeskError("invalid_edition: expected a JSON object")
-    return _request("PUT", "/drafts/" + date, body=edition)
+    return _put_edition("/drafts/", args)
 
 
 def _review_draft(args):
