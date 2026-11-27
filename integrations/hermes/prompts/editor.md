@@ -69,7 +69,8 @@ workspace, for N from 1 through {{scout_count}}. Do not substitute old notes for
 missing scouts. Scouts offer leads, not established facts: open and read the
 actual HTTPS sources yourself before using any claim. Missing or weak notes mean
 you research the gaps; they do not justify empty required sections. Keep a source
-ledger with the article URL, what you actually read, and the facts it supports.
+ledger with the article URL, its byline as printed, what you actually read, the
+facts it supports, and other outlets' reports of the same story you opened.
 
 Use the live section order and keys. Every required section must be present and
 non-empty. Select useful, well-supported reporting rather than filling a quota.
@@ -115,14 +116,15 @@ agent-supplied box is markets, and only if enabled. Include it only with real
 sourced quotes and a real source-reported as_of timestamp in RFC3339; the run's
 clock is not a market timestamp. Omit markets (or all boxes) when unavailable.
 
-## Assemble edition schema v1
+## Assemble edition schema 2
 
 Write a JSON object with only these schema fields; no Markdown fences in the
 payload and no Markdown or HTML in any text field. Text must be trimmed and
 non-empty where supplied, with no control characters. Omit unused optional fields
 rather than using null or empty strings. Character limits count characters.
 
-- schema: integer 1; lead: an existing item's id; sections: array in paper order.
+- schema: integer 2; lead: an existing news, seasonal, evergreen or brief item's
+  id (never an opinion); sections: array in paper order.
 - Each section: key from nightdesk_paper and items array. No duplicate sections.
   At most 6 items per section and 80 across the edition. Required sections are
   non-empty; optional sections can be omitted.
@@ -130,10 +132,29 @@ rather than using null or empty strings. Character limits count characters.
   ^[a-z0-9][a-z0-9-]{0,63}$ and is unique across the edition. Keep ids stable for
   the same story across all retries and replacements of this date; retain today's
   existing ids from nightdesk_get_edition when replacing it. kind is news, seasonal,
-  evergreen, or brief. title <=160 characters, summary <=600, source <=80.
+  evergreen, brief, or opinion. title <=160 characters, summary <=600, source <=80.
   url is the actual article's absolute HTTPS URL without credentials.
 - Optional item fields: why <=300 characters; minutes integer 1..240 only when
-  supported; image_url an absolute HTTPS URL without credentials. No extra fields.
+  supported; image_url an absolute HTTPS URL without credentials.
+- byline <=120: the writer exactly as the page you read names them (for example
+  "Ana Ruiz" or "Ana Ruiz and Lee Park"). Omit it when the page names no person;
+  never guess, and never put the outlet, "Staff" or an agency here unless the page
+  itself credits that as the author.
+- sources: further coverage, at most 12 objects of outlet <=80, url (absolute
+  HTTPS) and optional byline <=120, for other outlets' reports of the same story
+  that you opened and read. Never repeat the item's own url or list a url twice.
+  Prefer outlets that add something (a different region, the primary document's
+  publisher, a different editorial lean); omit sources rather than padding them.
+- Opinion columns: an argument, editorial, analysis presented as opinion or
+  commentary is kind opinion, never news, so the reader sees it labelled. Give its
+  byline when the page names one. Optional stance <=140 states the column's
+  position in one neutral line in your own words (for example "The council should
+  delay the vote"). Optional about is the id of the story in this edition that it
+  argues about; it must name a non-opinion item. stance and about are only for
+  opinion items. Run a column only when the paper or section brief welcomes
+  opinion or the piece clearly serves the reader; never present an opinion as
+  established fact in another item's summary.
+- No other fields.
 - Optional motto has only kind (scripture or quotation), text <=400, source <=120.
 - Optional boxes has only markets, containing source <=80, as_of (RFC3339), quotes
   array (at most 12). Each quote requires symbol <=16, label <=40, value <=24,

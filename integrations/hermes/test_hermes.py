@@ -21,6 +21,14 @@ KEY = "synthetic-nightdesk-test-key"
 EDITION = {"schema": 1, "lead": "economy-1", "sections": [{"key": "economy", "items": [
     {"id": "economy-1", "kind": "news", "title": "A title", "summary": "A summary",
      "source": "Example", "url": "https://example.com/story"}]}]}
+EDITION_V2 = {"schema": 2, "lead": "economy-1", "sections": [{"key": "economy", "items": [
+    {"id": "economy-1", "kind": "news", "title": "A title", "summary": "A summary",
+     "source": "Example", "url": "https://example.com/story", "byline": "Ana Ruiz",
+     "sources": [{"outlet": "Other Paper", "url": "https://other.example/story",
+                  "byline": "Lee Park"}]},
+    {"id": "economy-2", "kind": "opinion", "title": "A column", "summary": "An argument",
+     "source": "Opinion Desk", "url": "https://example.com/column", "byline": "Sam Hill",
+     "about": "economy-1", "stance": "The plan is too timid."}]}]}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -111,12 +119,20 @@ class PluginTests(unittest.TestCase):
         self.assert_request("GET", "/api/v1/paper/revisions?limit=5")
         self.call(plugin.nightdesk_restore_paper, {"revision": 0}, value=paper)
         self.assert_request("POST", "/api/v1/paper/restore", {"revision": 0})
+        self.call(plugin.nightdesk_restore_paper, {"revision": 1, "expected_revision": 3}, value=paper)
+        self.assert_request("POST", "/api/v1/paper/restore", {"revision": 1, "expected_revision": 3})
+        stale = {"error": "paper changed since expected_revision"}
+        self.assertEqual(self.call(plugin.nightdesk_restore_paper,
+                                   {"revision": 1, "expected_revision": 2}, value=stale, code=409),
+                         {"ok": False, **stale})
         calls = len(self.server.calls)
         for handler, args in ((plugin.nightdesk_edit_paper, {"changes": {}}),
                               (plugin.nightdesk_edit_paper, {"changes": "brief"}),
                               (plugin.nightdesk_paper_revisions, {"limit": 51}),
                               (plugin.nightdesk_restore_paper, {"revision": -1}),
-                              (plugin.nightdesk_restore_paper, {"revision": True})):
+                              (plugin.nightdesk_restore_paper, {"revision": True}),
+                              (plugin.nightdesk_restore_paper, {"revision": 1, "expected_revision": -1}),
+                              (plugin.nightdesk_restore_paper, {"revision": 1, "expected_revision": "3"})):
             self.assertFalse(self.call(handler, args)["ok"])
         self.assertEqual(len(self.server.calls), calls)
 
@@ -129,6 +145,18 @@ class PluginTests(unittest.TestCase):
                              {"ok": True, **response})
             self.assert_request("PUT", "/api/v1/editions/2026-10-27", EDITION)
         self.assertEqual(self.server.calls[0], self.server.calls[1])
+
+    def test_schema_2_editions_pass_through(self):
+        response = {"date": "2026-10-27", "warnings": []}
+        self.assertEqual(self.call(plugin.nightdesk_publish_edition,
+                                   {"date": "2026-10-27", "edition": EDITION_V2}, response),
+                         {"ok": True, **response})
+        self.assert_request("PUT", "/api/v1/editions/2026-10-27", EDITION_V2)
+        submitted = {"revision": 1, "warnings": []}
+        self.assertEqual(self.call(plugin.nightdesk_submit_draft,
+                                   {"date": "2026-10-27", "edition": EDITION_V2}, submitted),
+                         {"ok": True, **submitted})
+        self.assert_request("PUT", "/api/v1/drafts/2026-10-27", EDITION_V2)
 
     def test_422_errors_and_warnings_verbatim(self):
         response = {"errors": [{"path": "sections[3].items[0].url", "rule": "must be https"},
@@ -509,6 +537,34 @@ class PromptTests(unittest.TestCase):
             self.assertIn("status 404", prompt)
         self.assertIn("nightdesk_get_item", plugin.FEEDBACK_SCHEMA["description"])
         self.assertIn("Only status 404", plugin.GET_ITEM_SCHEMA["description"])
+
+
+class EditionSchemaTests(unittest.TestCase):
+    def test_write_tools_offer_schema_1_and_2(self):
+        repo = HERE.parent.parent
+        v2 = json.loads((repo / "schema" / "edition-v2.json").read_text(encoding="utf-8"))
+        v2_item = v2["properties"]["sections"]["items"]["properties"]["items"]["items"]
+        v2_source = v2_item["properties"]["sources"]["items"]
+        for schema in (plugin.PUBLISH_SCHEMA, plugin.SUBMIT_DRAFT_SCHEMA):
+            edition = schema["parameters"]["properties"]["edition"]
+            self.assertEqual(edition["properties"]["schema"]["enum"], [1, 2])
+            item = edition["properties"]["sections"]["items"]["properties"]["items"]["items"]
+            # Every field the server's v2 contract allows is described, and no others.
+            self.assertEqual(set(item["properties"]), set(v2_item["properties"]))
+            self.assertEqual(set(item["required"]), set(v2_item["required"]))
+            self.assertEqual(item["properties"]["kind"]["enum"], v2_item["properties"]["kind"]["enum"])
+            source = item["properties"]["sources"]["items"]
+            self.assertEqual(set(source["properties"]), set(v2_source["properties"]))
+            self.assertEqual(set(source["required"]), set(v2_source["required"]))
+            for word in ("byline", "sources", "opinion", "stance", "about"):
+                self.assertIn(word, plugin.PUBLISH_SCHEMA["description"])
+        review = plugin.REVIEW_SCHEMA["parameters"]["properties"]
+        self.assertEqual(set(review["with"]["properties"]), set(v2_item["properties"]))
+
+    def test_restore_offers_expected_revision(self):
+        restore = plugin.RESTORE_SCHEMA["parameters"]["properties"]
+        self.assertIn("expected_revision", restore)
+        self.assertIn("expected_revision", plugin.RESTORE_SCHEMA["description"])
 
 
 class RegistrationTests(unittest.TestCase):
