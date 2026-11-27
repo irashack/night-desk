@@ -32,8 +32,6 @@ and stored data keep the [upgrade promise](upgrading.md).
   revisions with restore, and sections have `required`, `find_sources` and `lean`
   flags, but `/sections` shows neither; an undo or recent-changes panel and the
   flags as toggles.
-- Archive search by byline, a column's stance and further-coverage outlets
-  (schema v2 fields the full-text index does not cover yet).
 - One gathering worker for several papers: one process looping over several
   worker keys, sharing its models and host cool-off, instead of one container
   per paper.

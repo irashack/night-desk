@@ -77,6 +77,7 @@ type view struct {
 	FrontNavigation pageNavigation
 	Query           string
 	SavedOnly       bool
+	SearchIn        string
 	Results         []store.SearchResult
 	Editing         bool
 	Rows            []sectionRow
