@@ -1,11 +1,9 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/wordmark-dark.svg">
-    <img src="docs/brand/wordmark-light.svg" width="420" alt="Night Desk">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/readme-banner-dark.png">
+    <img src="docs/brand/readme-banner-light.png" width="100%" alt="Night Desk: a daily paper with a circulation of one.">
   </picture>
 </h1>
-
-<p align="center"><em>A daily paper with a circulation of one.</em></p>
 
 <p align="center">
   <a href="https://github.com/irashack/night-desk/actions/workflows/ci.yml"><img src="https://github.com/irashack/night-desk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -39,7 +37,8 @@ OpenAI-compatible API, or Claude).
 - **A paper that is yours.** Sections, sources (RSS/Atom feeds, OPML,
   site-limited Google News), a masthead, a deadline in your timezone, editorial
   briefs, and the look of a broadsheet: Pages, List and Reader layouts in light,
-  sepia and dark.
+  sepia and dark, and three themes to choose from (Lamplight, Broadsheet and
+  Late Edition).
 - **Agents at the depth you choose.** `author`: your agent picks, writes and
   publishes. `reviewer`: Night Desk drafts and your agent reviews.
   `none`: Night Desk drafts and publishes on schedule. Both roles can use
