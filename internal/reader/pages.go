@@ -164,66 +164,78 @@ func (s *Server) base(r *http.Request) view {
 	return v
 }
 func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
+	v, err := s.editionView(r, r.PathValue("date"))
+	switch {
+	case errors.Is(err, errNoEdition):
+		v.Message = "Your first paper arrives tomorrow morning"
+		v.Spot = "moon"
+		s.render(w, "message", v)
+	case errors.Is(err, errNotInPaper):
+		s.notFound(w, r)
+	case err != nil:
+		http.Error(w, "Reader unavailable", 500)
+	default:
+		s.render(w, "edition", v)
+	}
+}
+
+var (
+	// errNoEdition: the paper has published nothing yet.
+	errNoEdition = errors.New("no edition yet")
+	// errNotInPaper: no such date, story or page in the paper.
+	errNotInPaper = errors.New("not in the paper")
+)
+
+// editionView builds an edition page (the newest when date is empty) for the
+// HTML reader and the reader API alike. It returns errNoEdition,
+// errNotInPaper or a storage error; v carries the page's base either way.
+func (s *Server) editionView(r *http.Request, date string) (view, error) {
 	v := s.base(r)
 	scope := current(r).scope.PaperScope()
-	date := r.PathValue("date")
 	if date == "" {
 		dates, err := s.Store.Dates(r.Context(), scope, 0, 1)
 		if err != nil {
-			http.Error(w, "Reader unavailable", 500)
-			return
+			return v, err
 		}
 		if len(dates) == 0 {
-			v.Message = "Your first paper arrives tomorrow morning"
-			v.Spot = "moon"
-			s.render(w, "message", v)
-			return
+			return v, errNoEdition
 		}
 		date = dates[0]
 	}
 	parsed, err := edition.ParseDate(date)
 	if err != nil {
-		s.notFound(w, r)
-		return
+		return v, errNotInPaper
 	}
 	ed, layout, err := s.Store.EditionWithLayout(r.Context(), scope, date)
 	if errors.Is(err, sql.ErrNoRows) {
-		s.notFound(w, r)
-		return
+		return v, errNotInPaper
 	}
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	coverage, err := s.Store.EditionCoverage(r.Context(), scope, date)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	images, err := s.Store.EditionImages(r.Context(), scope, date)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	feedback, err := s.Store.ReaderFeedback(r.Context(), current(r).scope, date)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	v.Number, err = s.Store.EditionNumber(r.Context(), scope, date)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	v.Unreviewed, err = s.Store.EditionUnreviewed(r.Context(), scope, date)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	later, err := s.followUps(r.Context(), scope, v.Paper, date, ed)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	v.Date = date
 	v.Dateline = parsed.Format("Monday, January 2, 2006")
@@ -265,13 +277,11 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 	}
 	readable, err := s.Store.ReadableLinks(r.Context(), scope, links)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	checks, err := s.provenance(r.Context(), scope, date, ed, paperZone(v.Paper.Timezone), v.Paper.RetentionDays)
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return v, err
 	}
 	for _, cfg := range sections {
 		section := sectionView{Key: cfg.Key, Title: cfg.Title, Page: len(v.Sections) + 2}
@@ -340,8 +350,7 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 	if v.Paper.Latitude != nil && v.Paper.Longitude != nil {
 		loc, err := time.LoadLocation(v.Paper.Timezone)
 		if err != nil {
-			http.Error(w, "Reader unavailable", 500)
-			return
+			return v, err
 		}
 		if v.Paper.Boxes.Sun || v.Paper.Boxes.Solunar {
 			v.Facts = almanac.Compute(parsed, *v.Paper.Latitude, *v.Paper.Longitude, loc)
@@ -350,7 +359,7 @@ func (s *Server) edition(w http.ResponseWriter, r *http.Request) {
 			v.Weather = s.Weather.Forecast(r.Context(), v.Paper.ID, *v.Paper.Latitude, *v.Paper.Longitude, v.Paper.Timezone, date, v.Paper.Metric())
 		}
 	}
-	s.render(w, "edition", v)
+	return v, nil
 }
 func (s *Server) archive(w http.ResponseWriter, r *http.Request) {
 	page := 1
@@ -388,25 +397,37 @@ func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid CSRF token", 403)
 		return
 	}
-	kind := r.PostForm.Get("kind")
-	if kind != "up" && kind != "down" && kind != "save" && kind != "unsave" {
+	switch s.recordFeedback(r, r.PostForm.Get("date"), r.PostForm.Get("item"), r.PostForm.Get("kind")) {
+	case nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errBadFeedback:
 		http.Error(w, "Invalid feedback", 400)
-		return
-	}
-	date, item := r.PostForm.Get("date"), r.PostForm.Get("item")
-	if _, err := edition.ParseDate(date); err != nil {
+	case errNotInPaper:
 		http.NotFound(w, r)
-		return
+	default:
+		http.Error(w, "Feedback unavailable", 500)
+	}
+}
+
+var errBadFeedback = errors.New("invalid feedback")
+
+// recordFeedback stores a reader's 👍, 👎, save or unsave on an item of the
+// selected paper's edition: errBadFeedback for another kind, errNotInPaper
+// when the edition or item does not exist.
+func (s *Server) recordFeedback(r *http.Request, date, item, kind string) error {
+	if kind != "up" && kind != "down" && kind != "save" && kind != "unsave" {
+		return errBadFeedback
+	}
+	if _, err := edition.ParseDate(date); err != nil {
+		return errNotInPaper
 	}
 	p := current(r)
 	ed, err := s.Store.Edition(r.Context(), p.scope.PaperScope(), date)
 	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
-		return
+		return errNotInPaper
 	}
 	if err != nil {
-		http.Error(w, "Reader unavailable", 500)
-		return
+		return err
 	}
 	found := false
 	for _, sec := range ed.Sections {
@@ -417,14 +438,8 @@ func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		http.NotFound(w, r)
-		return
+		return errNotInPaper
 	}
 	session := p.scope.Session()
-	err = s.Store.AddFeedback(r.Context(), p.scope.PaperScope(), store.Feedback{Date: date, ItemID: item, Kind: kind, ReaderIssuer: session.Issuer, ReaderSubject: session.Subject})
-	if err != nil {
-		http.Error(w, "Feedback unavailable", 500)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return s.Store.AddFeedback(r.Context(), p.scope.PaperScope(), store.Feedback{Date: date, ItemID: item, Kind: kind, ReaderIssuer: session.Issuer, ReaderSubject: session.Subject})
 }

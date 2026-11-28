@@ -213,6 +213,7 @@ func serve(manager *config.Manager, db *store.Store, log *slog.Logger) int {
 	}
 	readerServer.Editorial = desk
 	readerServer.Log = log
+	readerServer.Version = versionString()
 	// Sessions from another sign-in mode never count; delete them so they
 	// cannot come back if that mode is chosen again.
 	if n, e := db.DeleteSessionsNotFrom(ctx, c.AcceptsIssuer); e != nil {

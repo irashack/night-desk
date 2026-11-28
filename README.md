@@ -146,7 +146,7 @@ binary.
 | [Design](docs/design.md) | How Night Desk is built, and why. |
 | [Roadmap](docs/roadmap.md) | What comes next. |
 | [Upgrading](docs/upgrading.md) | The compatibility promise. |
-| [OpenAPI](docs/reference/openapi.json) · [edition schema v1](schema/edition-v1.json) · [v2](schema/edition-v2.json) | The published contracts. |
+| [OpenAPI](docs/reference/openapi.json) · [reader API](docs/reference/reader-api.md) · [edition schema v1](schema/edition-v1.json) · [v2](schema/edition-v2.json) | The published contracts. |
 
 ## Commands
 

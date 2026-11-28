@@ -8,6 +8,9 @@
 <button>Sign in <span aria-hidden="true">→</span></button></form>
 {{if .Passkeys}}<p class="or js-only" hidden>or</p><button type="button" class="quiet" data-passkey-login="{{.Form}}" data-next="{{.Next}}" hidden>Sign in with a passkey</button>{{end}}
 <p class="note">Forgot your password? Ask whoever runs this Night Desk for a reset link.</p></main>
+{{else if eq .Page "authorize"}}<main><img class="art" src="/static/signin-art.png" width="640" height="420" alt="Night Desk"><h1>Sign in the app?</h1><p class="lede"><b>{{.Username}}</b> asks to read <b>{{.Action}}</b> and your other papers as you, and to send your 👍, 👎 and saves.</p>
+<form method="post"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="decision" value="allow">Allow <span aria-hidden="true">→</span></button> <button class="quiet" name="decision" value="deny">Cancel</button></form>
+<p class="note">Only allow this if you just started signing in from the Night Desk app. You can sign the app out from the app itself.</p></main>
 {{else if eq .Page "setup"}}<main><img class="art" src="/static/signin-art.png" width="640" height="420" alt="Night Desk"><h1>Welcome to Night Desk</h1><p class="lede">Create the first account. It can invite the other readers.</p>{{template "auth-messages" .}}
 <form method="post" action="/setup"><input type="hidden" name="form" value="{{.Form}}">
 <label>Setup code<input type="text" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required maxlength="64"></label>
