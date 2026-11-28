@@ -192,6 +192,10 @@ or more than 512 groups.
 Sessions follow the header: when it names someone else, or the groups change, the
 old session is not used. There is no sign-in page or sign-out in this mode; sign
 out at the proxy. `trusted_proxies` may not contain `0.0.0.0/0` or `::/0`.
+Native apps call the [reader API](reference/reader-api.md) with a bearer token and
+no proxy cookie: to use one, let `/api/reader/` through the proxy without its
+sign-in (the token authenticates those requests, and Night Desk ignores the user
+header on them), and keep every other path behind it.
 
 **`none`.** There is no sign-in. One reader reads every paper (the first is theirs
 and its sections are editable) and every page shows a banner saying so. Night Desk

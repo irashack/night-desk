@@ -49,6 +49,7 @@ type Server struct {
 	Weather   *weather.Client
 	Editorial *editorial.Desk // when set, readers may edit their paper's sections
 	Push      *push.Key       // when set, readers may opt in to web push
+	Version   string          // the server's release, shown to apps (reader API)
 	Log       *slog.Logger
 	// Banner, when set, replaces the banner every page shows (the demo's);
 	// NoBanner shows none (the demo's screenshots).
@@ -72,6 +73,9 @@ type Server struct {
 	registrations  map[[32]byte]ceremony
 	ambient        map[string]string
 	lastGroups     map[string]string
+	// grants are app sign-ins confirmed in the browser, waiting for the app
+	// to exchange their code (appauth.go).
+	grants map[[32]byte]grant
 }
 
 // New builds the reader for the configured sign-in mode. Only oidc contacts
@@ -213,6 +217,9 @@ func (s *Server) Handler() http.Handler {
 		// Proxy and none sign in on every request; there is no sign-in page.
 		mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
 	}
+	mux.Handle("GET /app/authorize", s.protect(http.HandlerFunc(s.appAuthorize), false))
+	mux.Handle("POST /app/authorize", s.protect(http.HandlerFunc(s.appAuthorizeSubmit), false))
+	s.apiRoutes(mux)
 	mux.HandleFunc("GET /static/", s.static)
 	mux.HandleFunc("GET /sw.js", s.static)
 	mux.Handle("POST /logout", s.protect(http.HandlerFunc(s.logout), true))
@@ -336,9 +343,24 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 }
 
 // returnPath accepts where sign-in should land afterwards: only a paper page
-// on this site (/p/{paper}/...), never another origin.
+// on this site (/p/{paper}/...) or an app's sign-in request (/app/authorize),
+// never another origin.
 func returnPath(next string) string {
-	if len(next) > 512 || !strings.HasPrefix(next, "/p/") || strings.ContainsAny(next, "\\\x00\r\n") {
+	if len(next) > 1024 || strings.ContainsAny(next, "\\\x00\r\n") {
+		return ""
+	}
+	if strings.HasPrefix(next, "/app/authorize?") {
+		u, err := url.Parse(next)
+		if err != nil || u.Path != "/app/authorize" || u.Scheme != "" || u.Host != "" || u.User != nil {
+			return ""
+		}
+		// Only well-formed requests come back; a bad one has nothing to resume.
+		if _, problem := parseAuthorize(u.Query()); problem != "" {
+			return ""
+		}
+		return u.RequestURI()
+	}
+	if len(next) > 512 || !strings.HasPrefix(next, "/p/") {
 		return ""
 	}
 	u, err := url.Parse(next)
@@ -477,10 +499,16 @@ func (s *Server) protect(next http.Handler, unmappedOK bool) http.Handler {
 
 // signInAgain is the sign-in page with a way back to the paper page asked for.
 func signInAgain(w http.ResponseWriter, r *http.Request) {
+	signInFor(w, r, "Sign in again to read this paper.")
+}
+
+// signInFor is the sign-in page that returns to the request afterwards, with
+// tagline in place of the usual one.
+func signInFor(w http.ResponseWriter, r *http.Request, tagline string) {
 	page := signIn
 	if next := returnPath(r.URL.RequestURI()); next != "" {
 		page = strings.Replace(page, `<a href="/login">`, `<a href="/login?next=`+template.HTMLEscapeString(url.QueryEscape(next))+`">`, 1)
-		page = strings.Replace(page, `Your paper, set overnight.`, `Sign in again to read this paper.`, 1)
+		page = strings.Replace(page, `Your paper, set overnight.`, template.HTMLEscapeString(tagline), 1)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
@@ -502,6 +530,11 @@ func (s *Server) unauthorized(w http.ResponseWriter, r *http.Request) {
 		return
 	case config.AuthProxy:
 		s.renderAuth(w, http.StatusUnauthorized, authView{Page: "message", Title: "Sign in through your proxy", Logout: true, Error: "This Night Desk signs readers in through a reverse proxy, and this request did not come through it signed in."})
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/app/authorize" {
+		// An app's sign-in comes back to its confirmation after the provider.
+		signInFor(w, r, "Sign in to connect the Night Desk app.")
 		return
 	}
 	unauthorized(w, r)

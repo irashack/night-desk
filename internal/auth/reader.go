@@ -22,6 +22,9 @@ type Session struct {
 	// GroupsChecked records that sign-in asked for the groups claim, so Groups
 	// is the reader's membership (possibly none) rather than unknown.
 	GroupsChecked bool
+	// Client names the app and device a reader API token was granted to;
+	// empty for a browser's session.
+	Client string
 }
 type SessionLookup interface {
 	Session(context.Context, [32]byte) (Session, error)
