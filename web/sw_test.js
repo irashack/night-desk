@@ -23,11 +23,11 @@ function harness() {
     async delete(name) { return stores.delete(name); },
   };
   let network = async () => { throw new Error('offline'); };
-  const windows = [], opened = [];
-  const context = vm.createContext({self: {location: {origin}, addEventListener(type, fn) { handlers[type] = fn; }, clients: {claim: async () => {}, matchAll: async () => windows, openWindow: async (path) => { opened.push(path); }}, skipWaiting: async () => {}}, URL, Response, Request, caches, fetch: (...args) => network(...args)});
+  const windows = [], opened = [], notifications = [];
+  const context = vm.createContext({self: {registration: {showNotification: async (title, options) => notifications.push({title, options})}, location: {origin}, addEventListener(type, fn) { handlers[type] = fn; }, clients: {claim: async () => {}, matchAll: async () => windows, openWindow: async (path) => { opened.push(path); }}, skipWaiting: async () => {}}, URL, Response, Request, caches, fetch: (...args) => network(...args)});
   vm.runInContext(readFileSync(__dirname + '/static/sw.js', 'utf8'), context);
   return {
-    stores, caches, windows, opened,
+    stores, caches, windows, opened, notifications,
     setNetwork(fn) { network = fn; },
     async dispatch(type, data) {
       const pending = []; let response;
@@ -109,4 +109,30 @@ test('a server error on a dated page keeps the saved paper', async () => {
   h.setNetwork(async () => { throw new Error('offline'); }); assert.match(await (await h.navigate('/e/2026-10-27')).text(), /owner-a/);
   h.setNetwork(async () => new Response('Page not found', {status: 404})); await h.navigate('/e/2026-10-27');
   h.setNetwork(async () => { throw new Error('offline'); }); assert.equal((await h.navigate('/e/2026-10-27')).status, 503);
+});
+
+test('headline pushes show the payload and open only same-origin targets', async () => {
+  const h = harness(), target = origin + '/p/club/';
+  for (const navigate of [target, 'https://other.test/', 'https://[']) {
+    const notification = {title: 'Club News', body: 'The lead', navigate};
+    await h.dispatch('push', {data: {json: () => ({notification})}});
+    const {title, options} = h.notifications.pop();
+    assert.equal(title, notification.title);
+    assert.equal(options.body, notification.body);
+    assert.equal(options.tag, 'nd-edition');
+    assert.equal(options.icon, '/static/icon-192.png');
+    assert.equal(options.data?.navigate, navigate === target ? target : undefined);
+    await h.dispatch('notificationclick', {notification: {...options, close() {}}});
+    assert.equal(h.opened.pop(), navigate === target ? target : '/push/open');
+  }
+});
+test('empty and malformed pushes show the fixed notification', async () => {
+  const h = harness();
+  for (const data of [null, {json: () => JSON.parse('{')}, {json: () => ({notification: {title: 'Partial'}})}]) {
+    await h.dispatch('push', {data});
+    const {title, options} = h.notifications.pop();
+    assert.equal(title, 'Night Desk');
+    assert.equal(options.body, "Today's paper is ready");
+    assert.equal(options.data, undefined);
+  }
 });

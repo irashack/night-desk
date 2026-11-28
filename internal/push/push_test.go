@@ -129,7 +129,7 @@ type fakeService struct {
 	*httptest.Server
 	mu       sync.Mutex
 	requests []*http.Request
-	bodies   []int
+	bodies   [][]byte
 	status   func(path string) int
 }
 
@@ -139,7 +139,7 @@ func service(t *testing.T) *fakeService {
 		b, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.requests = append(f.requests, r)
-		f.bodies = append(f.bodies, len(b))
+		f.bodies = append(f.bodies, b)
 		code := f.status(r.URL.Path)
 		f.mu.Unlock()
 		w.WriteHeader(code)
@@ -213,7 +213,7 @@ func (d *desk) subscribe(t *testing.T, subject, endpoint string) [32]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = d.db.AddPushSubscription(ctx, scope, endpoint, nil); err != nil {
+	if err = d.db.AddPushSubscription(ctx, scope, endpoint, nil, store.PushKeys{}); err != nil {
 		t.Fatal(err)
 	}
 	return hash
@@ -252,8 +252,8 @@ func TestDeliveryOnPublication(t *testing.T) {
 		t.Fatalf("requests: %d", len(svc.requests))
 	}
 	for i, r := range svc.requests {
-		if r.Method != "POST" || svc.bodies[i] != 0 || r.ContentLength != 0 || r.Header.Get("TTL") != "43200" || r.Header.Get("Content-Encoding") != "" {
-			t.Fatalf("not an empty push: %s %d %v", r.Method, svc.bodies[i], r.Header)
+		if r.Method != "POST" || len(svc.bodies[i]) != 0 || r.ContentLength != 0 || r.Header.Get("TTL") != "43200" || r.Header.Get("Content-Encoding") != "" {
+			t.Fatalf("not an empty push: %s %d %v", r.Method, len(svc.bodies[i]), r.Header)
 		}
 		claims, pub := verify(t, r.Header.Get("Authorization"))
 		if pub != d.loop.Key.PublicKey() || claims["aud"] != svc.URL || claims["sub"] != "https://paper.example.com" {

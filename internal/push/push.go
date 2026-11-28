@@ -1,8 +1,10 @@
 package push
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -12,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
@@ -140,7 +143,7 @@ func (l *Loop) Tick(ctx context.Context) error {
 			}
 			continue
 		}
-		status, retryAfter, sendErr := l.send(ctx, client, d.Endpoint, strings.TrimRight(c.Server.PublicBaseURL, "/"))
+		status, retryAfter, sendErr := l.send(ctx, client, d, c)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -181,16 +184,80 @@ func reads(c *config.Config, d store.PushDelivery) bool {
 	return false
 }
 
-// send posts one empty, VAPID-signed message. The push service keeps it for up
-// to 12 hours, and a newer one with the same topic replaces it.
-func (l *Loop) send(ctx context.Context, client *http.Client, endpoint, subject string) (int, time.Duration, error) {
+// headline trims a lead headline for the lock screen: at most 180 runes,
+// cut at a word boundary.
+func headline(title string) string {
+	runes := []rune(strings.TrimSpace(title))
+	if len(runes) <= 180 {
+		return string(runes)
+	}
+	cut := 179
+	for cut > 0 && !unicode.IsSpace(runes[cut]) {
+		cut--
+	}
+	if cut == 0 {
+		cut = 179
+	}
+	return strings.TrimSpace(string(runes[:cut])) + "…"
+}
+
+// payload is the encrypted Declarative Web Push message naming the paper and
+// its lead, or nil for the empty push: the paper did not opt in, the device
+// sent no keys, or the edition has no titled, non-opinion lead.
+func (l *Loop) payload(ctx context.Context, d store.PushDelivery, c *config.Config, base string) ([]byte, error) {
+	paper, _ := c.Paper(d.Paper)
+	if !paper.PushHeadline || d.Keys.P256DH == "" || d.Keys.Auth == "" {
+		return nil, nil
+	}
+	masthead, title, err := l.Store.PushLead(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	body := headline(title)
+	if body == "" {
+		return nil, nil
+	}
+	if masthead == "" {
+		masthead = paper.Masthead
+	}
+	notification := map[string]any{"title": masthead, "body": body, "navigate": base + "/p/" + paper.ID + "/", "tag": "nd-edition", "silent": false}
+	if paper.Locale != "" {
+		notification["lang"] = paper.Locale
+	}
+	message, err := json.Marshal(map[string]any{"web_push": 8030, "notification": notification})
+	if err != nil {
+		return nil, err
+	}
+	return encrypt(d.Keys.P256DH, d.Keys.Auth, message)
+}
+
+// send posts one VAPID-signed message, empty or with the encrypted headline.
+// The push service keeps it for up to 12 hours, and a newer one with the same
+// topic replaces it.
+func (l *Loop) send(ctx context.Context, client *http.Client, d store.PushDelivery, c *config.Config) (int, time.Duration, error) {
+	endpoint := d.Endpoint
+	subject := strings.TrimRight(c.Server.PublicBaseURL, "/")
+	// The headline is a bonus: when it cannot be built (an unreadable
+	// edition, keys the browser no longer accepts), the empty push still goes.
+	payload, err := l.payload(ctx, d, c, subject)
+	if err != nil {
+		payload = nil
+	}
+	var body io.Reader
+	if payload != nil {
+		body = bytes.NewReader(payload)
+	}
 	authorization, err := l.Key.Authorization(endpoint, subject, l.now())
 	if err != nil {
 		return 0, 0, fetch.ErrRefused
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return 0, 0, fetch.ErrRefused
+	}
+	if payload != nil {
+		req.Header.Set("Content-Encoding", "aes128gcm")
+		req.Header.Set("Content-Type", "application/octet-stream")
 	}
 	req.Header.Set("Authorization", authorization)
 	req.Header.Set("TTL", "43200")

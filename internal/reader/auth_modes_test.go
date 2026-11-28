@@ -865,7 +865,7 @@ func TestProxyGroupChangeRefreshesPushGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.db.AddPushSubscription(ctx, scope, "https://push.example/1", nil); err != nil {
+	if err = f.db.AddPushSubscription(ctx, scope, "https://push.example/1", nil, store.PushKeys{}); err != nil {
 		t.Fatal(err)
 	}
 	groups := func() string {

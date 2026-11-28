@@ -10,6 +10,7 @@ import (
 	"github.com/irashack/night-desk/internal/auth"
 	"github.com/irashack/night-desk/internal/config"
 	"github.com/irashack/night-desk/internal/keys"
+	"github.com/irashack/night-desk/internal/store"
 )
 
 // withShared adds a paper read by the "family" group.
@@ -47,7 +48,7 @@ func (d *desk) subscribeTo(t *testing.T, token, paper, endpoint string) {
 	}
 	if scope, ok := scope.For(paper); !ok {
 		t.Fatalf("session does not read %s", paper)
-	} else if err = d.db.AddPushSubscription(ctx, scope, endpoint, nil); err != nil {
+	} else if err = d.db.AddPushSubscription(ctx, scope, endpoint, nil, store.PushKeys{}); err != nil {
 		t.Fatal(err)
 	}
 }

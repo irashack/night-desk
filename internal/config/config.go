@@ -57,6 +57,7 @@ type Paper struct {
 	DeadlinePolicy string    `json:"deadline_policy,omitempty"`
 	DraftLead      string    `json:"draft_lead,omitempty"`
 	ID             string    `json:"id"`
+	PushHeadline   bool      `json:"push_headline,omitempty"`
 	Masthead       string    `json:"masthead"`
 	Place          string    `json:"place,omitempty"`
 	// Units is imperial (the default: °F, mph) or metric (°C, km/h).

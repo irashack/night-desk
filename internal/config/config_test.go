@@ -322,3 +322,18 @@ func TestSubjectFile(t *testing.T) {
 		}
 	}
 }
+
+func TestPushHeadlineOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	for _, enabled := range []bool{false, true} {
+		raw := valid
+		if enabled {
+			raw = strings.Replace(raw, "  masthead:", "  push_headline: true\n  masthead:", 1)
+		}
+		write(t, path, raw)
+		cfg, err := Load(path)
+		if err != nil || cfg.Papers[0].PushHeadline != enabled {
+			t.Fatal("push_headline", err)
+		}
+	}
+}

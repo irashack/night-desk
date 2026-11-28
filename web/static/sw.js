@@ -1,5 +1,5 @@
 'use strict';
-const SHELL = 'nd-shell-v2', PAPER = 'nd-paper-v1';
+const SHELL = 'nd-shell-v3', PAPER = 'nd-paper-v1';
 const SHELL_URLS = ['/static/app.css', '/static/app.js', '/static/icon-32.png', '/static/apple-touch-icon.png', '/static/icon-192.png', '/static/icon-512.png', '/static/icon-maskable-512.png', '/static/fonts/oldstandard-regular.woff2', '/static/fonts/oldstandard-bold.woff2', '/static/fonts/unifrakturcook-bold.woff2', '/static/fonts/librefranklin-var.woff2'];
 let generation = 0, work = Promise.resolve();
 const serial = (fn) => { const result = work.then(fn); work = result.catch(() => {}); return result; };
@@ -57,8 +57,9 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/img/')) {
     event.respondWith((async () => { const c = await caches.open(PAPER); return await c.match(req) || fetch(req); })()); return;
   }
-  // Offline, a notification click shows the saved default paper.
-  if (req.mode === 'navigate' && url.pathname === OPEN) {
+  // Offline, a notification click (to /push/open or a headline's paper)
+  // shows the saved default paper.
+  if (req.mode === 'navigate' && (url.pathname === OPEN || /^\/p\/[a-z0-9][a-z0-9-]{0,63}\/$/.test(url.pathname))) {
     event.respondWith(fetch(req).catch(async () => await (await caches.open(PAPER)).match('/') || fetch(req)));
     return;
   }
@@ -76,19 +77,35 @@ self.addEventListener('fetch', (event) => {
     return cached || new Response('This paper is not saved offline. Connect and try again.', {status: 503, headers: {'Content-Type': 'text/plain', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
   }));
 });
-// Pushes carry no payload: the notification is fixed, and a newer one replaces it.
+function sameOriginTarget(value) {
+  if (typeof value !== 'string' || !value) return;
+  try {
+    const url = new URL(value, self.location.origin);
+    if (url.origin === self.location.origin) return url.href;
+  } catch (_) {}
+}
 self.addEventListener('push', (event) => {
-  event.waitUntil(self.registration.showNotification('Night Desk', {body: "Today's paper is ready", icon: '/static/icon-192.png', tag: 'nd-edition'}));
+  let title = 'Night Desk';
+  const options = {body: "Today's paper is ready", icon: '/static/icon-192.png', tag: 'nd-edition'};
+  try {
+    const n = event.data?.json()?.notification;
+    if (typeof n?.title === 'string' && n.title.trim() && typeof n.body === 'string' && n.body.trim()) {
+      title = n.title;
+      options.body = n.body;
+      const navigate = sameOriginTarget(n.navigate);
+      if (navigate) options.data = {navigate};
+    }
+  } catch (_) {}
+  event.waitUntil(self.registration.showNotification(title, options));
 });
-// Pushes do not say which paper they are for, so a click goes through
-// /push/open, which redirects to the paper that announced the newest edition.
 const OPEN = '/push/open';
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil((async () => {
+    const target = sameOriginTarget(event.notification.data?.navigate) || OPEN;
     const open = (await self.clients.matchAll({type: 'window'})).find((c) => new URL(c.url).origin === self.location.origin);
-    if (!open) return self.clients.openWindow(OPEN);
+    if (!open) return self.clients.openWindow(target);
     await open.focus();
-    await open.navigate(OPEN);
+    await open.navigate(target);
   })());
 });

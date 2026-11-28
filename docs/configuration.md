@@ -33,6 +33,7 @@ server:
 papers:
   - id: daily
     masthead: The Daily
+    push_headline: false  # Include the lead headline in device notifications.
     place: Chicago
     agent_role: author            # author, reviewer or none
     deadline_policy: hold         # hold or publish-unreviewed
@@ -312,11 +313,11 @@ is re-read whenever the header changes rather than only at sign-in.
 - Notifications are per paper. Each sign-in refreshes the groups that reader's
   push subscriptions carry, and each push rechecks that the reader still reads the
   paper, by subject or by those groups. A removed member who never signs in again
-  keeps getting the empty "paper is ready" push until the group reader is removed
+  keeps getting notifications until the group reader is removed
   from the configuration or the device unsubscribes; opening it asks for sign-in.
 - The agent API is unchanged: a shared paper has its own agent key like any other.
-- Only the default paper (at `/`) is saved for offline reading. A notification
-  opens the paper that announced the newest edition among those the reader turned
+- Only the default paper (at `/`) is saved for offline reading. A headline
+  notification (`push_headline`) opens its own paper; an empty one opens the paper that announced the newest edition among those the reader turned
   notifications on for (through `/push/open`); offline it shows the saved default
   paper, and the other papers need a connection.
 
@@ -474,7 +475,11 @@ or resumed from the background checks for a newer edition when it returns to
 view and reloads to it; when the server cannot be reached it says it is showing
 the saved copy and names its date. "Notify me when the paper lands" in the Menu
 sends that device a notification whenever a new edition is published (on iOS, only
-in the Home Screen app) until it is turned off or the device signs out. Signing out removes the
+in the Home Screen app) until it is turned off or the device signs out. By default the notification says only that the paper is ready.
+Set `push_headline: true` on a paper to show its masthead and lead headline, including
+on the lock screen. The server encrypts this content to the browser. Devices without
+subscription keys and editions without a titled, non-opinion lead get the default
+notification. Signing out removes the
 session and clears Night Desk's offline caches. Offline devices cannot learn about
 a server-side revocation until they reconnect. Avoid installing personal papers in
 a shared browser profile.

@@ -99,7 +99,7 @@ Everything is one Go binary, `nightdesk`, run in different roles.
   transaction as the change that caused them. Agents either poll `GET /api/v1/events` or receive
   the same events as webhooks, signed with HMAC-SHA256 over the timestamp and body
   (in the style of GitHub's), with event IDs, replay protection, durable retries
-  and secret rotation. A second outbox sends one empty, VAPID-signed web push to
+  and secret rotation. A second outbox sends one VAPID-signed web push to
   each subscribed device the first time a date is published as the paper's newest
   edition.
 - **MCP client (`nightdesk mcp`).** A stdio MCP server for agent hosts that speak
@@ -420,11 +420,14 @@ response only; refused addresses never), with a per-run retry budget and a cool-
 for hosts that keep failing. The cool-off lives in the worker process, because the
 worker has no database and forgetting it on restart costs at most a few more tries.
 
-**Web push without a payload.** The push says only that today's paper is ready, so
-nothing about the paper leaves the server and no message encryption is needed; the
-VAPID key pair comes from the standard library. A click therefore asks the server
-where to go: `/push/open` redirects to the paper whose newest announced edition is
-the most recent among those the reader has notifications on for.
+**Web push content is opt-in per paper.** By default the server sends an empty
+push. The browser shows “Today's paper is ready” and a click opens `/push/open`,
+which finds the most recently announced paper the reader subscribed to. With
+`push_headline: true`, a device with subscription keys receives the masthead and
+lead headline and opens that paper directly. The payload is encrypted end to end
+to the browser (RFC 8291). Apple, Google or Mozilla sees only ciphertext and its
+size for the notification content. Editions without a titled, non-opinion lead
+use the empty push.
 
 **Modules, each with a reason.** `coreos/go-oidc` and `golang.org/x/oauth2`
 (OIDC sign-in), `golang.org/x/crypto` (argon2id) and `go-webauthn/webauthn`

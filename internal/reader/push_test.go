@@ -14,7 +14,7 @@ import (
 )
 
 func subscriptionJSON(endpoint string) string {
-	b, _ := json.Marshal(map[string]any{"endpoint": endpoint, "expirationTime": nil, "keys": map[string]string{"p256dh": "BPk", "auth": "c2VjcmV0"}})
+	b, _ := json.Marshal(map[string]any{"endpoint": endpoint, "expirationTime": nil})
 	return string(b)
 }
 func (f *fixture) readerScope(t *testing.T, token string) auth.ReaderScope {
@@ -170,5 +170,33 @@ func TestPushIsolationAndSignOut(t *testing.T) {
 	_, token := f.session(t)
 	if f.devices(t, token) != 0 {
 		t.Fatal("sign-out kept the reader's device")
+	}
+}
+
+func TestPushStatusBackfillsKeys(t *testing.T) {
+	f := setup(t)
+	f.signIn(t, "").Body.Close()
+	session, _ := f.session(t)
+	const endpoint = "https://push.example.com/device"
+	const point = "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4="
+	const secret = "BTBZMqHH6r4Tts7J_aSIgg=="
+	sub := fmt.Sprintf(`{"endpoint":%q,"keys":{"p256dh":%q,"auth":%q}}`, endpoint, point, secret)
+	invalid := strings.Replace(sub, secret, "invalid", 1)
+	if code := f.pushPost(t, "/push/subscribe", session.CSRF, invalid); code != 400 {
+		t.Fatal("invalid keys", code)
+	}
+	if code := f.pushPost(t, "/push/subscribe", session.CSRF, subscriptionJSON(endpoint)); code != 204 {
+		t.Fatal("legacy subscribe", code)
+	}
+	for _, raw := range []string{sub, invalid} {
+		r := f.post(t, "/push/status", url.Values{"csrf": {session.CSRF}, "subscription": {raw}})
+		if got := strings.TrimSpace(body(t, r)); got != `{"on":true}` {
+			t.Fatalf("status %q", got)
+		}
+	}
+	f.publish(t, f.a, "2026-10-27", sampleEdition(), nil)
+	d, err := f.db.ClaimPush(context.Background(), time.Now())
+	if err != nil || d.Keys.P256DH != point || d.Keys.Auth != secret {
+		t.Fatal("status did not refresh subscription keys", err)
 	}
 }
