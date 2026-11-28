@@ -11,11 +11,22 @@ import (
 	"github.com/irashack/night-desk/internal/store"
 )
 
-// subscription is the browser's PushSubscription.toJSON(). The p256dh and auth
-// keys are ignored: pushes carry no payload, so nothing is encrypted to them.
+// subscription is the browser's PushSubscription.toJSON().
 type subscription struct {
-	Endpoint       string   `json:"endpoint"`
-	ExpirationTime *float64 `json:"expirationTime"`
+	Keys           json.RawMessage `json:"keys"`
+	Endpoint       string          `json:"endpoint"`
+	ExpirationTime *float64        `json:"expirationTime"`
+}
+
+func (sub subscription) keys() (store.PushKeys, bool) {
+	if sub.Keys == nil {
+		return store.PushKeys{}, true
+	}
+	var keys store.PushKeys
+	if json.Unmarshal(sub.Keys, &keys) != nil || !push.ValidKeys(keys.P256DH, keys.Auth) {
+		return store.PushKeys{}, false
+	}
+	return keys, true
 }
 
 // pushForm reads the CSRF-checked form field "subscription". It writes the
@@ -59,7 +70,12 @@ func (s *Server) pushSubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 		expires = &at
 	}
-	err := s.Store.AddPushSubscription(r.Context(), current(r).scope, sub.Endpoint, expires)
+	keys, valid := sub.keys()
+	if !valid {
+		http.Error(w, "Invalid subscription", 400)
+		return
+	}
+	err := s.Store.AddPushSubscription(r.Context(), current(r).scope, sub.Endpoint, expires, keys)
 	if errors.Is(err, store.ErrPushLimit) {
 		http.Error(w, "Too many devices", 409)
 		return
@@ -92,7 +108,8 @@ func (s *Server) pushStatus(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	on, err := s.Store.HasPushSubscription(r.Context(), current(r).scope, sub.Endpoint)
+	keys, _ := sub.keys()
+	on, err := s.Store.HasPushSubscription(r.Context(), current(r).scope, sub.Endpoint, keys)
 	if err != nil {
 		http.Error(w, "Notifications unavailable", 500)
 		return

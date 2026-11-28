@@ -17,9 +17,14 @@ const PushAttempts = 4
 
 var ErrPushLimit = errors.New("too many push subscriptions")
 
+type PushKeys struct {
+	P256DH string `json:"p256dh"`
+	Auth   string `json:"auth"`
+}
+
 // AddPushSubscription records (or renews) one device for the session's reader
 // and paper. A device already registered moves to the current session.
-func (s *Store) AddPushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string, expires *time.Time) error {
+func (s *Store) AddPushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string, expires *time.Time, keys PushKeys) error {
 	paper, err := scopeID(scope.PaperScope())
 	if err != nil {
 		return err
@@ -45,8 +50,8 @@ func (s *Store) AddPushSubscription(ctx context.Context, scope auth.ReaderScope,
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO push_subscriptions(paper_id,reader_issuer,reader_subject,session_hash,endpoint,expires_at,created_at,reader_groups) VALUES (?,?,?,?,?,?,?,?)
-	 ON CONFLICT(paper_id,reader_issuer,reader_subject,endpoint) DO UPDATE SET session_hash=excluded.session_hash,expires_at=excluded.expires_at,reader_groups=excluded.reader_groups`, paper, session.Issuer, session.Subject, session.Hash[:], endpoint, expiry, now(), groups); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO push_subscriptions(paper_id,reader_issuer,reader_subject,session_hash,endpoint,expires_at,created_at,reader_groups,p256dh,auth) VALUES (?,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''))
+	 ON CONFLICT(paper_id,reader_issuer,reader_subject,endpoint) DO UPDATE SET session_hash=excluded.session_hash,expires_at=excluded.expires_at,reader_groups=excluded.reader_groups,p256dh=excluded.p256dh,auth=excluded.auth`, paper, session.Issuer, session.Subject, session.Hash[:], endpoint, expiry, now(), groups, keys.P256DH, keys.Auth); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -70,13 +75,21 @@ func (s *Store) RemovePushSubscription(ctx context.Context, scope auth.ReaderSco
 }
 
 // HasPushSubscription reports whether the device notifies the session reader
-// of the scope's paper.
-func (s *Store) HasPushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string) (bool, error) {
+// of the scope's paper. Valid browser keys refresh an existing subscription.
+func (s *Store) HasPushSubscription(ctx context.Context, scope auth.ReaderScope, endpoint string, keys PushKeys) (bool, error) {
 	paper, err := scopeID(scope.PaperScope())
 	if err != nil {
 		return false, err
 	}
 	session := scope.Session()
+	if keys.P256DH != "" {
+		result, err := s.db.ExecContext(ctx, `UPDATE push_subscriptions SET p256dh=?,auth=? WHERE paper_id=? AND reader_issuer=? AND reader_subject=? AND endpoint=?`, keys.P256DH, keys.Auth, paper, session.Issuer, session.Subject, endpoint)
+		if err != nil {
+			return false, err
+		}
+		n, err := result.RowsAffected()
+		return n != 0, err
+	}
 	var on bool
 	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE paper_id=? AND reader_issuer=? AND reader_subject=? AND endpoint=?)`, paper, session.Issuer, session.Subject, endpoint).Scan(&on)
 	return on, err
@@ -136,11 +149,34 @@ func enqueuePushTx(ctx context.Context, tx *sql.Tx, paper, date string, at time.
 type PushDelivery struct {
 	Subscription    int64
 	Paper, Date     string
+	Keys            PushKeys
 	Endpoint        string
 	Issuer, Subject string
 	// Groups is the reader's groups claim as of their latest sign-in.
 	Groups   []string
 	Attempts int
+}
+
+// PushLead returns the published masthead and the explicit non-opinion lead.
+func (s *Store) PushLead(ctx context.Context, d PushDelivery) (masthead, title string, err error) {
+	ed, layout, err := s.editionWithLayout(ctx, d.Paper, d.Date)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if layout != nil {
+		masthead = layout.Masthead
+	}
+	for _, section := range ed.Sections {
+		for _, item := range section.Items {
+			if ed.Lead != "" && item.ID == ed.Lead && item.Kind != "opinion" {
+				return masthead, item.Title, nil
+			}
+		}
+	}
+	return "", "", nil
 }
 
 // ClaimPush reserves one due notification before sending, like ClaimDelivery:
@@ -169,7 +205,7 @@ func (s *Store) ClaimPush(ctx context.Context, at time.Time) (PushDelivery, erro
 	}
 	var d PushDelivery
 	var groups string
-	err = tx.QueryRowContext(ctx, `SELECT d.subscription_id,s.paper_id,d.date,s.endpoint,s.reader_issuer,s.reader_subject,s.reader_groups,d.attempts FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.next_attempt_at<=? ORDER BY d.next_attempt_at,d.subscription_id LIMIT 1`, at.Unix()).Scan(&d.Subscription, &d.Paper, &d.Date, &d.Endpoint, &d.Issuer, &d.Subject, &groups, &d.Attempts)
+	err = tx.QueryRowContext(ctx, `SELECT d.subscription_id,s.paper_id,d.date,s.endpoint,COALESCE(s.p256dh,''),COALESCE(s.auth,''),s.reader_issuer,s.reader_subject,s.reader_groups,d.attempts FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.next_attempt_at<=? ORDER BY d.next_attempt_at,d.subscription_id LIMIT 1`, at.Unix()).Scan(&d.Subscription, &d.Paper, &d.Date, &d.Endpoint, &d.Keys.P256DH, &d.Keys.Auth, &d.Issuer, &d.Subject, &groups, &d.Attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		if err = tx.Commit(); err != nil {
 			return d, err
@@ -207,8 +243,8 @@ func (s *Store) FinishPush(ctx context.Context, d PushDelivery, gone bool, retry
 
 // LatestNotifiedPaper is the paper, among those the session reads, whose
 // newest announced edition is the most recent for which the session's reader
-// has notifications on: where a notification click should lead. Pushes carry
-// no payload, so the click asks the server. ok is false when there is none.
+// has notifications on: where a notification click should lead. For an empty
+// push the click asks the server. ok is false when there is none.
 func (s *Store) LatestNotifiedPaper(ctx context.Context, scope auth.ReaderScope) (paper string, ok bool, err error) {
 	if _, err = scopeID(scope.PaperScope()); err != nil {
 		return "", false, err

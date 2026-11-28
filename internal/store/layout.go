@@ -32,10 +32,14 @@ func (s *Store) EditionWithLayout(ctx context.Context, scope auth.PaperScope, da
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.editionWithLayout(ctx, paper, date)
+}
+
+func (s *Store) editionWithLayout(ctx context.Context, paper, date string) (*edition.Edition, *EditionLayout, error) {
 	var schema int
 	var body []byte
 	var raw sql.NullString
-	if err = s.db.QueryRowContext(ctx, "SELECT schema,body,layout FROM editions WHERE paper_id=? AND date=?", paper, date).Scan(&schema, &body, &raw); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT schema,body,layout FROM editions WHERE paper_id=? AND date=?", paper, date).Scan(&schema, &body, &raw); err != nil {
 		return nil, nil, err
 	}
 	ed, err := edition.DecodeStored(schema, body)

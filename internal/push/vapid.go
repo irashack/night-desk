@@ -1,4 +1,4 @@
-// Package push sends payload-free Web Push notifications (RFC 8030) signed with
+// Package push sends Web Push notifications (RFC 8030) signed with
 // the server's VAPID key (RFC 8292) when an edition is published.
 package push
 
