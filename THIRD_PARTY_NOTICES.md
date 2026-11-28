@@ -134,8 +134,9 @@ given build are recorded in `go.mod`, `go.sum` and the binary's build metadata
 
 ## Fonts
 
-Old Standard TT, Libre Franklin and UnifrakturCook are bundled under the SIL Open
-Font License 1.1. Their full copyright and licence texts accompany the fonts in
+Old Standard TT, Libre Franklin, UnifrakturCook, Source Serif 4 and IBM Plex Sans
+(the Late Edition theme's faces, Latin subsets from Fontsource) are bundled under
+the SIL Open Font License 1.1. Their full copyright and licence texts accompany the fonts in
 [`web/static/fonts/`](web/static/fonts/).
 
 ## Ideas and optional operator-imported data

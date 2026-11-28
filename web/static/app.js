@@ -29,6 +29,17 @@
   };
   all('[data-mode-choice]').forEach((b) => b.addEventListener('click', () => { setMode(b.dataset.modeChoice); remember('mode', mode); }));
   setMode(mode);
+  // The theme is chosen per paper on this device; a paper not yet chosen for
+  // follows the last choice made anywhere.
+  const themes = ['lamplight', 'broadsheet', 'late-edition'];
+  let theme = read('theme' + base) || read('theme');
+  if (!themes.includes(theme)) theme = 'lamplight';
+  const setTheme = (value) => {
+    theme = value; document.documentElement.dataset.theme = theme;
+    all('[data-theme-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme)));
+  };
+  all('[data-theme-choice]').forEach((b) => b.addEventListener('click', () => { setTheme(b.dataset.themeChoice); remember('theme' + base, theme); remember('theme', theme); }));
+  setTheme(theme);
   const book = $('#book'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
   // Only an edition's book has turnable pages; a story page's article is one too
   // by class, for its type, but has no page bar to collect.

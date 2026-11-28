@@ -1,0 +1,188 @@
+{
+ "$comment": "Night Desk reader themes. The source of truth for the reader's colours and type (web/static/app.css is checked against it by web/themes_test.go) and for other clients such as the iOS app. Colours are sRGB hex. Every text colour meets WCAG 2.2 AA against its background; check new pairs with docs/brand/tools/contrast.py.",
+ "version": 1,
+ "roles": {
+  "bg": "App ground: behind the paper, and the app's own bars",
+  "fg": "Text on the app ground",
+  "muted": "Secondary text on the app ground",
+  "line": "Hairlines on the app ground",
+  "chip": "Buttons and chips on the app ground",
+  "p-bg": "The paper",
+  "p-ink": "Headlines and body text on the paper",
+  "p-muted": "Datelines and metadata on the paper",
+  "p-rule": "Rules on the paper (non-text, at least 3:1)",
+  "p-soft": "Quiet fills on the paper (picture placeholders, highlights)",
+  "p-accent": "Links, labels and focus on the paper"
+ },
+ "brand": {
+  "ink": "#171719",
+  "cream": "#EFE4D5",
+  "rule": "#C54E30",
+  "glow": "#F0B76D"
+ },
+ "fonts": {
+  "UnifrakturCook": {
+   "licence": "OFL-1.1",
+   "files": [
+    "unifrakturcook-bold.woff2"
+   ]
+  },
+  "Old Standard TT": {
+   "licence": "OFL-1.1",
+   "files": [
+    "oldstandard-regular.woff2",
+    "oldstandard-bold.woff2",
+    "oldstandard-italic.woff2"
+   ]
+  },
+  "Libre Franklin": {
+   "licence": "OFL-1.1",
+   "files": [
+    "librefranklin-var.woff2"
+   ]
+  },
+  "Source Serif 4": {
+   "licence": "OFL-1.1",
+   "files": [
+    "sourceserif4-regular.woff2",
+    "sourceserif4-bold.woff2",
+    "sourceserif4-italic.woff2"
+   ]
+  },
+  "IBM Plex Sans": {
+   "licence": "OFL-1.1",
+   "files": [
+    "ibmplexsans-regular.woff2",
+    "ibmplexsans-medium.woff2",
+    "ibmplexsans-semibold.woff2"
+   ]
+  }
+ },
+ "default": "lamplight",
+ "themes": {
+  "lamplight": {
+   "name": "Lamplight",
+   "about": "Evolve what is there: the ink and cream of the logo, the red rule as the one accent, and the lamp's amber glow as the only warmth. The paper waits in a pool of light.",
+   "fonts": {
+    "masthead": "UnifrakturCook",
+    "head": "Old Standard TT",
+    "body": "Old Standard TT",
+    "label": "Libre Franklin"
+   },
+   "masthead": "centred, with the logo's short red rule under the name",
+   "light": {
+    "bg": "#EAE0D0",
+    "fg": "#171719",
+    "muted": "#655249",
+    "line": "#D4C6B1",
+    "chip": "#F8EFE1",
+    "p-bg": "#F8EFE1",
+    "p-ink": "#171719",
+    "p-muted": "#655249",
+    "p-rule": "#171719",
+    "p-soft": "#EFE4D5",
+    "p-accent": "#A63E22"
+   },
+   "dark": {
+    "bg": "#121214",
+    "fg": "#EFE4D5",
+    "muted": "#C5B2A1",
+    "line": "#34302C",
+    "chip": "#211E1C",
+    "p-bg": "#1B1918",
+    "p-ink": "#EFE4D5",
+    "p-muted": "#B9A796",
+    "p-rule": "#EFE4D5",
+    "p-soft": "#262220",
+    "p-accent": "#E8805F"
+   }
+  },
+  "broadsheet": {
+   "name": "Broadsheet",
+   "about": "Bring the reader's newsprint out to the front door: paper grey, near-black ink, proof-red. Built from double rules, columns and the nameplate.",
+   "fonts": {
+    "masthead": "UnifrakturCook",
+    "head": "Old Standard TT",
+    "body": "Old Standard TT",
+    "label": "Libre Franklin"
+   },
+   "masthead": "centred between double rules",
+   "light": {
+    "bg": "#E2E0D9",
+    "fg": "#191918",
+    "muted": "#5E5C56",
+    "line": "#C9C6BC",
+    "chip": "#F4F3EF",
+    "p-bg": "#ECEBE6",
+    "p-ink": "#191918",
+    "p-muted": "#5E5C56",
+    "p-rule": "#191918",
+    "p-soft": "#E2E0D9",
+    "p-accent": "#8A1F14"
+   },
+   "dark": {
+    "bg": "#111110",
+    "fg": "#E6E3DA",
+    "muted": "#A29E93",
+    "line": "#33322F",
+    "chip": "#1E1D1B",
+    "p-bg": "#161615",
+    "p-ink": "#E6E3DA",
+    "p-muted": "#A29E93",
+    "p-rule": "#E6E3DA",
+    "p-soft": "#22211F",
+    "p-accent": "#F18B78"
+   }
+  },
+  "late-edition": {
+   "name": "Late Edition",
+   "about": "The paper lands while the city is still dark: blue-black, slate and cold moonlight around the red rule, a flush-left masthead and a crisper modern serif.",
+   "fonts": {
+    "masthead": "UnifrakturCook",
+    "head": "Source Serif 4",
+    "body": "Source Serif 4",
+    "label": "IBM Plex Sans"
+   },
+   "masthead": "flush left on an accent rail",
+   "light": {
+    "bg": "#E2E8F2",
+    "fg": "#111A2C",
+    "muted": "#4B5A70",
+    "line": "#C3CDDC",
+    "chip": "#F0F4FA",
+    "p-bg": "#F0F4FA",
+    "p-ink": "#111A2C",
+    "p-muted": "#4B5A70",
+    "p-rule": "#111A2C",
+    "p-soft": "#E2E8F2",
+    "p-accent": "#305381"
+   },
+   "dark": {
+    "bg": "#080D18",
+    "fg": "#E4ECFA",
+    "muted": "#A8B7CB",
+    "line": "#26324A",
+    "chip": "#151F32",
+    "p-bg": "#0C1220",
+    "p-ink": "#E4ECFA",
+    "p-muted": "#A8B7CB",
+    "p-rule": "#E4ECFA",
+    "p-soft": "#151F32",
+    "p-accent": "#B0CDF8"
+   }
+  }
+ },
+ "sepia": {
+  "$comment": "The sepia mode is shared by every theme.",
+  "bg": "#e8decb",
+  "fg": "#3a2a19",
+  "muted": "#6b5842",
+  "line": "#d3c4a6",
+  "chip": "#f6ecd8",
+  "p-bg": "#f2e4c6",
+  "p-ink": "#3a2a19",
+  "p-muted": "#75614a",
+  "p-rule": "#3a2a19",
+  "p-soft": "#e8d6b2"
+ }
+}

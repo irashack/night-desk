@@ -618,8 +618,10 @@ func TestArchivePaginationAndFirstLoadBudget(t *testing.T) {
 	// Raised to 166 KB for each story's reading-view link; the reading view's
 	// own CSS and script load only on its page.
 	// Raised to 167 KB for archive and search controls styled in every mode.
-	if total >= 167000 {
-		t.Fatalf("first load exceeds 167 KB: %d", total)
+	// Raised to 172 KB for the three reader themes, their theme switch and the
+	// masthead colophon; Late Edition's fonts load only when it is chosen.
+	if total >= 172000 {
+		t.Fatalf("first load exceeds 172 KB: %d", total)
 	}
 }
 
