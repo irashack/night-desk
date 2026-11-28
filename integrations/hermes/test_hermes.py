@@ -31,6 +31,42 @@ EDITION_V2 = {"schema": 2, "lead": "economy-1", "sections": [{"key": "economy", 
      "about": "economy-1", "stance": "The plan is too timid."}]}]}
 
 
+def schema_errors(schema, value, path=""):
+    """A small JSON Schema check of the keywords the tool schemas use, standing in
+    for a host that validates tool arguments before calling the plugin."""
+    kinds = {"object": dict, "array": list, "string": str, "integer": int}
+    errors = []
+    expected = schema.get("type")
+    if expected and (not isinstance(value, kinds[expected]) or
+                     (expected == "integer" and isinstance(value, bool))):
+        return [path + ": type"]
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(path + ": enum")
+    if isinstance(value, str):
+        if "maxLength" in schema and len(value) > schema["maxLength"]:
+            errors.append(path + ": maxLength")
+        if "pattern" in schema and not re.search(schema["pattern"], value):
+            errors.append(path + ": pattern")
+    if isinstance(value, int):
+        if value < schema.get("minimum", value) or value > schema.get("maximum", value):
+            errors.append(path + ": range")
+    if isinstance(value, list):
+        if len(value) > schema.get("maxItems", len(value)):
+            errors.append(path + ": maxItems")
+        for i, item in enumerate(value):
+            errors += schema_errors(schema.get("items", {}), item, "%s[%d]" % (path, i))
+    if isinstance(value, dict):
+        props = schema.get("properties", {})
+        errors += [(path + "." if path else "") + k + ": required"
+                   for k in schema.get("required", []) if k not in value]
+        for key, item in value.items():
+            if key in props:
+                errors += schema_errors(props[key], item, (path + "." if path else "") + key)
+            elif schema.get("additionalProperties") is False:
+                errors.append((path + "." if path else "") + key + ": additionalProperties")
+    return errors
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
@@ -615,10 +651,45 @@ class EditionSchemaTests(unittest.TestCase):
         for schema in (plugin.PUBLISH_SCHEMA, plugin.SUBMIT_DRAFT_SCHEMA):
             item = schema["parameters"]["properties"]["edition"]["properties"]["sections"]["items"][
                 "properties"]["items"]["items"]
-            self.assertEqual(limits(item["properties"]), limits(v2_item["properties"]))
+            # Every limit but summary's, which the plugin trims instead (see below).
+            expected = {k: v for k, v in limits(v2_item["properties"]).items() if k != "summary"}
+            self.assertEqual(limits(item["properties"]), expected)
             self.assertEqual(limits(item["properties"]["sources"]["items"]["properties"]),
                              limits(v2_source["properties"]))
         self.assertIn("summary <=600", plugin.PUBLISH_SCHEMA["description"])
+
+    def test_schema_validating_hosts_let_long_summaries_reach_the_trim(self):
+        # Hermes (and any host that validates tool arguments against the declared
+        # schema) rejected long summaries before the plugin ran while summary had
+        # maxLength (#4423). A long summary must pass the declared schema.
+        edition = json.loads(json.dumps(EDITION_V2))
+        edition["sections"][0]["items"][0]["summary"] = "A long sentence about the plan. " * 40
+        args = {"date": "2026-11-28", "edition": edition}
+        for schema in (plugin.PUBLISH_SCHEMA, plugin.SUBMIT_DRAFT_SCHEMA):
+            self.assertEqual(schema_errors(schema["parameters"], args), [])
+            summary = schema["parameters"]["properties"]["edition"]["properties"]["sections"][
+                "items"]["properties"]["items"]["items"]["properties"]["summary"]
+            self.assertNotIn("maxLength", summary)
+            self.assertIn("600", summary["description"])
+            # Other limits still reach a validating host, and a null edition is the
+            # host's error to report; the plugin's own message covers hosts that don't.
+            too_long = json.loads(json.dumps(args))
+            too_long["edition"]["sections"][0]["items"][0]["title"] = "t" * 161
+            self.assertEqual(schema_errors(schema["parameters"], too_long),
+                             ["edition.sections[0].items[0].title: maxLength"])
+            self.assertEqual(schema_errors(schema["parameters"], {"date": "2026-11-28", "edition": None}),
+                             ["edition: type"])
+            self.assertIn("never null", schema["parameters"]["properties"]["edition"]["description"])
+
+    def test_null_or_missing_edition_explains_what_to_resend(self):
+        for tool in (plugin.nightdesk_publish_edition, plugin.nightdesk_submit_draft):
+            for args in ({"date": "2026-11-28", "edition": None}, {"date": "2026-11-28"}):
+                with mock.patch.object(plugin.OPENER, "open") as opened:
+                    result = json.loads(tool(args))
+                opened.assert_not_called()
+                self.assertFalse(result["ok"])
+                self.assertTrue(result["error"].startswith("invalid_edition: edition is required"))
+                self.assertIn("whole edition object", result["error"])
 
     def test_restore_offers_expected_revision(self):
         restore = plugin.RESTORE_SCHEMA["parameters"]["properties"]

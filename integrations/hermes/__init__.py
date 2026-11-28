@@ -38,6 +38,9 @@ EDITION_V2_FIELDS = (
     "Schema 1 has none of these fields.")
 # Item text limits, in characters, mirror schema/edition-v2.json and the server's
 # validator; stating them in the tool schema lets the model see them before it calls.
+# summary is the exception: its limit is stated only in descriptions, never as
+# maxLength, because hosts that validate tool arguments against the schema (Hermes
+# does) would reject a long summary before the plugin can trim it (_trim_summaries).
 SUMMARY_LIMIT = 600
 _SOURCE_PROPERTY = {"type": "object", "required": ["outlet", "url"],
                     "properties": {"outlet": {"type": "string", "maxLength": 80},
@@ -47,8 +50,9 @@ _ITEM_PROPERTIES = {
     "id": {"type": "string"}, "kind": {"type": "string",
                                        "enum": ["news", "seasonal", "evergreen", "brief", "opinion"]},
     "title": {"type": "string", "maxLength": 160},
-    "summary": {"type": "string", "maxLength": SUMMARY_LIMIT,
-                "description": "At most 600 characters; aim for 450 or fewer."},
+    "summary": {"type": "string",
+                "description": "At most 600 characters; aim for 450 or fewer. The tool trims a "
+                               "longer summary at its last sentence and reports it in trimmed."},
     "why": {"type": "string", "maxLength": 300},
     "source": {"type": "string", "maxLength": 80}, "url": {"type": "string"},
     "minutes": {"type": "integer", "minimum": 1, "maximum": 240},
@@ -64,7 +68,8 @@ _ITEM_PROPERTIES = {
 
 def _edition_property():
     return {"type": "object",
-            "description": "Edition JSON object, schema/edition-v2.json (or edition-v1.json). "
+            "description": "Required: the whole edition JSON object, schema/edition-v2.json "
+                           "(or edition-v1.json), in this call; never null or omitted. "
                            "The server validates all fields and paper-specific rules.",
             "required": ["schema", "lead", "sections"],
             "properties": {"schema": {"type": "integer", "enum": [1, 2]},
@@ -445,6 +450,10 @@ def _trim_summaries(edition):
 def _put_edition(path, args):
     date = _date(args)
     edition = args.get("edition")
+    if edition is None:
+        # The edition is the request body; the server has nothing to publish without it.
+        raise NightDeskError("invalid_edition: edition is required; resend this call with "
+                             "the whole edition object (it was null or missing)")
     if not isinstance(edition, dict):
         raise NightDeskError("invalid_edition: expected a JSON object")
     edition, trimmed = _trim_summaries(edition)
