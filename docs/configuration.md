@@ -426,10 +426,13 @@ next online request after configuration reload.
 
 The embedded reader has Pages, List and Reader layouts (Reader is a centered
 single column with larger type), keyboard/swipe page turns, front-page shortcuts,
-Auto/Light/Sepia/Dark modes, an archive with full-text search over past editions
+Auto/Light/Sepia/Dark modes, three themes (Lamplight, the default; Broadsheet;
+Late Edition, with its own fonts), an archive with full-text search over past editions
 and saved items, and per-item feedback. While reading, the only fixed control is a
 one-row page bar (previous, the page's place with a link to the front page, next
-and Menu); Menu opens Today, Archive, Sections, the modes, the layouts and Sign out. On a
+and Menu); Menu opens Today, Archive, Sections, the modes, the theme, the layouts and Sign out.
+The theme is remembered per paper on each device, and a paper not yet set follows
+the last theme chosen. On a
 desktop-width window the bar runs across the top beside Today and Archive, and the
 paper widens: the front page sets the lead beside the section index and sections
 set their stories in columns. A past edition's news lists up to three later articles
