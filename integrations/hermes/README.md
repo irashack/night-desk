@@ -126,6 +126,15 @@ each change in the result's `trimmed` (`path`, `from`, `to`, `limit`). Every oth
 rule, including the other lengths, is still checked by the server, whose 422
 stays the guard.
 
+Plugin 1.3.1 drops `maxLength` from `summary`, keeping its limit in the field and
+tool descriptions. Hosts that validate tool arguments against the declared schema
+before calling the plugin (Hermes does) rejected a long summary before the trim
+could shorten it; the trim is now the only summary-length step before the server.
+Every other limit stays in the schema. A null or missing `edition` returns
+`invalid_edition: edition is required; ...` without contacting the server, since
+the edition is the request body; a validating host reports it as a type error
+first.
+
 Upgrading a deployment: replace the plugin files, then give author-role editors
 and scouts the current `prompts/editor.md` and `prompts/scout.md`. A deployment
 that copied the prompts into scheduled jobs must update those jobs' prompts; the
